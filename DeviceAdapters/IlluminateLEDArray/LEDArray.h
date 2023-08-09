@@ -10,7 +10,7 @@
 // COPYRIGHT:     Regents of the University of California
 // LICENSE:       LGPL
 //
-// AUTHOR:        Samdrea Hsu
+// AUTHOR:        Samdrea Hsu, samdreahsu@berkeley.edu, 8/9/2023
 //
 //////////////////////////////////////////////////////////////////////////////
 

@@ -10,8 +10,7 @@
 // COPYRIGHT:     Regents of the University of California
 // LICENSE:       LGPL
 //
-// AUTHOR:        Henry Pinkard, hbp@berkeley.edu, 12/13/2016
-// AUTHOR:        Zack Phillips, zkphil@berkeley.edu, 3/1/2019
+// AUTHOR:        Samdrea Hsu, samdreahsu@berkeley.edu, 8/9/2023
 //
 //////////////////////////////////////////////////////////////////////////////
 
