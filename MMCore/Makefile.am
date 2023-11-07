@@ -1,17 +1,13 @@
 AUTOMAKE_OPTIONS = foreign subdir-objects
 
-AM_LDFLAGS = $(MMCORE_APPLEHOST_LDFLAGS)
-
 noinst_LTLIBRARIES = libMMCore.la
 
 libMMCore_la_LIBADD = ../MMDevice/libMMDevice.la
 
 libMMCore_la_SOURCES = \
-	../MMDevice/FixSnprintf.h \
 	../MMDevice/MMDevice.h \
 	../MMDevice/MMDeviceConstants.h \
 	../MMDevice/ModuleInterface.h \
-	AppleHost.h \
 	CircularBuffer.cpp \
 	CircularBuffer.h \
 	ConfigGroup.h \
@@ -60,8 +56,6 @@ libMMCore_la_SOURCES = \
 	ErrorCodes.h \
 	FrameBuffer.cpp \
 	FrameBuffer.h \
-	Host.cpp \
-	Host.h \
 	LibraryInfo/LibraryPaths.h \
 	LibraryInfo/LibraryPathsUnix.cpp \
 	LoadableModules/LoadedDeviceAdapter.cpp \

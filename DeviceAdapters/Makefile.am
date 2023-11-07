@@ -1,6 +1,9 @@
 AUTOMAKE_OPTIONS = foreign
 ACLOCAL_AMFLAGS = -I ../m4
 
+if BUILD_ALLIED_VISION_CAMERA
+   ALLIED_VISION_CAMERA = AlliedVisionCamera
+endif
 if BUILD_ANDOR
    ANDOR = Andor
 endif
@@ -65,9 +68,13 @@ endif
 if BUILD_V4L2
    V4L = Video4Linux
 endif
+if BUILD_ZABER
+   ZABER = Zaber
+endif
 
 # Please keep these ASCII-lexically sorted (pass through sort(1)).
 SUBDIRS = \
+	$(ALLIED_VISION_CAMERA) \
 	$(ANDOR) \
 	$(ANDORLASERCOMBINER) \
 	$(ANDORSDK3) \
@@ -90,6 +97,7 @@ SUBDIRS = \
 	$(SPOT) \
 	$(USBMANAGER) \
 	$(V4L) \
+	$(ZABER) \
 	AAAOTF \
 	AOTF \
 	ASIFW1000 \
@@ -203,7 +211,6 @@ SUBDIRS = \
 	Xcite \
 	YodnE600 \
 	Yokogawa \
-	Zaber \
 	ZeissCAN \
 	ZeissCAN29 \
 	kdv \

@@ -40,8 +40,21 @@ AC_SUBST(MMDEVAPI_LDFLAGS)
 # Location of third party public files
 thirdpartypublic="${micromanager_path}/../3rdpartypublic"
 
-
 MM_INSTALL_DIRS
+
+
+# Detect the target system
+build_linux=no
+build_osx=no
+
+case $host in
+    *linux*) build_linux=yes ;;
+    *apple-darwin*) build_osx=yes ;;
+    *) AC_MSG_ERROR(["Host $host is not supported"]) ;;
+esac
+
+AM_CONDITIONAL([HOST_LINUX], [test "x$build_linux" = xyes])
+AM_CONDITIONAL([HOST_OSX], [test "x$build_osx" = xyes])
 
 
 # libusb 0.1 or libusb-compat
@@ -381,6 +394,52 @@ AS_IF([test "x$want_opencv" != xno],
 
 AM_CONDITIONAL([BUILD_OPENCV], [test "x$use_opencv" = xyes])
 
+# Vimba X (Allied Vision) SDK
+MM_ARG_WITH_OPTIONAL_LIB([Vimba X], [vimba-x], [VIMBA_X])
+AS_IF([test "x$want_vimba_x" != xno],
+[
+   MM_LIB_VIMBA_X([$VIMBA_X_PREFIX],
+                  [use_vimba_x=yes],
+                  [
+                     use_vimba_x=no
+                     AS_IF([test "x$want_vimba_x" = xyes],
+                           [MM_MSG_OPTIONAL_LIB_FAILURE([Vimba X], [vimba-x])])
+                  ])
+],
+[use_vimba_x=no])
+
+AM_CONDITIONAL([BUILD_ALLIED_VISION_CAMERA], [test "x$use_vimba_x" = xyes])
+
+# Zaber Motion Library (hack: only support 3rdpartypublic copy currently)
+AC_MSG_CHECKING([for Zaber Motion Library in 3rdpartypublic])
+zml_header_to_check="${thirdpartypublic}/Zaber/zaber-motion/include/zaber/motion/library.h"
+AM_CONDITIONAL([BUILD_ZABER], [test -f $zml_header_to_check])
+if test -f "$zml_header_to_check"; then
+   AC_MSG_RESULT([found])
+   ZML_CPPFLAGS="-I${thirdpartypublic}/Zaber/zaber-motion/include"
+   ZML_LIBS="-lzml"
+   case $host in
+      *linux*)
+         # Linux builds by users should install ZML libs
+         zml_linux_libdir="${thirdpartypublic}/Zaber/zaber-motion/linux-amd64/lib"
+         ZML_LDFLAGS="-L${zml_linux_libdir} -Wl,-rpath,"'\$$ORIGIN'
+         ZML_LIBS_TO_COPY="${zml_linux_libdir}/libzml.so.3.4 ${zml_linux_libdir}/libzaber-motion-lib-linux-amd64.so.3.4.3"
+         ;;
+
+      *apple-darwin*)
+         # macOS build for packaging does not ship ZML
+         ZML_LDFLAGS="-L${thirdpartypublic}/Zaber/zaber-motion/darwin/lib"
+         ZML_LIBS_TO_COPY=""
+         ;;
+   esac
+else
+   AC_MSG_RESULT([not found])
+fi
+AC_SUBST(ZML_CPPFLAGS)
+AC_SUBST(ZML_LIBS)
+AC_SUBST(ZML_LDFLAGS)
+AC_SUBST(ZML_LIBS_TO_COPY)
+
 
 # Only build ... when the code is there
 AM_CONDITIONAL([BUILD_TEST],[test -f "Test/Test.h"])
@@ -463,6 +522,7 @@ m4_define([device_adapter_dirs], [m4_strip([
    ASITiger
    ASIWPTR
    Aladdin
+   AlliedVisionCamera
    Andor
    AndorLaserCombiner
    AndorSDK3
@@ -633,4 +693,7 @@ echo "m4_text_wrap([$use_libusb_0_1],
 echo "m4_text_wrap([$use_opencv],
                    [                                            ],
                    [    Build with OpenCV:                      ])"
+echo "m4_text_wrap([$use_vimba_x],
+                   [                                            ],
+                   [    Build with Vimba X:                     ])"
 echo ""
