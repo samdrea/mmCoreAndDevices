@@ -58,7 +58,7 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 /*
 * Constructor, called when device is selected
 */
-OpenFlexure::OpenFlexure() : initialized_(false), portAvailable_(false), stepSizeUm_(0.07)
+OpenFlexure::OpenFlexure() : initialized_(false), portAvailable_(false), stepSizeUm_(0.07), stepsX_(0), stepsY_(0)
 {
 
 	// Initialize default error messages
@@ -119,94 +119,88 @@ int OpenFlexure::Initialize()
 
 
 
-int OpenFlexure::GetPositionUm(double& x, double& y)
+/**
+* Called by SetPositionUm()
+* Probably best to call SetRelativePosition() to complete this function
+*/
+int OpenFlexure::SetPositionSteps(long x, long y)
 {
-	long stepsY, stepsX;
-
-	// Get the steps
-	int ret = GetPositionSteps(stepsY, stepsX);
-
-	if (ret != DEVICE_OK) {
-		return ret;
-	}  
-
-	// Convert the steps into um 
-	x = stepsX * stepSizeUm_;
-	y = stepsY * stepSizeUm_;  
-
 	return DEVICE_OK;
 }
 
-int OpenFlexure::SetPositionSteps(long x, long y)
+/**
+* Rewriting a function that I shouldn't have messed with...
+* According to DeviceBase.h, updates cached xPos and yPos and then calls OnXYStagePositionChanged
+* Calls SetPositionSteps, which is the function users should implement to actuate change in physical xy stage device
+*/
+int OpenFlexure::SetPositionUm(double posX, double posY)
 {
+	// Manually change the xPos and yPos
+	// Not sure where this function is actually called...
+	return DEVICE_OK;
+}
 
+
+/**
+* Called when stage control GUI is opened
+*/
+int OpenFlexure::GetPositionUm(double& posX, double& posY)
+{
+	posX = stepsX_ * stepSizeUm_;
+	posY = stepsY_ * stepSizeUm_;
 
 	return DEVICE_OK;
 }
 
 
 /**
-* Called when device is starting. 
+* Should be called by GetPositionUm(), but probably redundant, becaue I'm keeping stepsX_ and stepsY_ global variables
 */
 int OpenFlexure::GetPositionSteps(long& x, long& y)
 {
-	while (Busy()); // Don't show the steps until stage stops moving
-
-
-	// Query for the current position (x, y, z) of the stage
-	int ret = SendSerialCommand(port_.c_str(), "p", "\n");
-
-	if (ret != DEVICE_OK) {
-		return ret;
-	}
-
-	// Get Answer
-	GetSerialAnswer(port_.c_str(), "\r", _serial_answer);
-
-	std::istringstream iss(_serial_answer);
-
-	iss >> x;
-
-	iss >> y;
+	x = stepsX_;
+	y = stepsY_;
 
 	return DEVICE_OK;
-
 }
 
+/**
+* Rewriting a function that I shouldn't have messed with...
+* Called when arrow key is pressed
+* Calls on SetRelativePositionSteps to actuate change in physical device
+* Updates OnXYStagePositionChanged with xPos and yPos
+*/
+int OpenFlexure::SetRelativePositionUm(double dx, double dy)
+{
+	long dxSteps = nint(dx / stepSizeUm_);
+	long dySteps = nint(dy / stepSizeUm_);
+	int ret = SetRelativePositionSteps(dxSteps, dySteps); // Stage starts moving after this step
 
+	if (ret == DEVICE_OK) {
+		stepsX_ += dxSteps;
+		stepsY_ += dySteps;
+		this->OnXYStagePositionChanged(stepsX_ * stepSizeUm_, stepsY_ * stepSizeUm_);
+	}
+
+	return DEVICE_OK;
+}
+
+/**
+* According to DeviceBase.h, it uses GetPositionSteps() and then SetPositionSteps()
+* Since OpenFlexure has a specific function for setting relative position, I'm actualizing the xy stage device here
+*/
 int OpenFlexure::SetRelativePositionSteps(long x, long y)
 {
+	while (Busy()); // Make sure stage isn't moving
 
-	// sending two commands sequentially
+	// Sending two commands sequentially
 	std::ostringstream cmd;
 	cmd << "mrx " << x << "\nmry " << y; // move in x first then y (arbitrary choice)
 	int ret = SendSerialCommand(port_.c_str(), cmd.str().c_str(), "\n");
 
-
-	//std::ostringstream move_x;
-	//std::ostringstream move_y;
-
-	//move_x << "mrx " << x;
-	//move_y << "mry " << y;
-
-	//// move in x first (arbitrary choice)
-	//int ret = SendSerialCommand(port_.c_str(), move_x.str().c_str(), "\n");
-
-	//if (ret != DEVICE_OK) {
-	//	return ret;
-	//}
-
-	//// move in y second
-	//ret = SendSerialCommand(port_.c_str(), move_y.str().c_str(), "\n");
-
-	// Get Answer
-	std::string answer;
-	GetSerialAnswer(port_.c_str(), "\r", answer);
-
 	if (ret != DEVICE_OK) {
 		return ret;
 	}
-
 
 	return DEVICE_OK;
 }
@@ -227,6 +221,9 @@ int OpenFlexure::SetOrigin()
 }
 
 
+/**
+* Could be the function to sync adapter to the stage's actual positions... if fails, I'll implement a sync() myself
+*/
 int OpenFlexure::SetAdapterOrigin()
 {
 	return DEVICE_OK;
@@ -254,6 +251,7 @@ int OpenFlexure::Stop()
 	return DEVICE_OK;
 
 }
+
 
 
 int OpenFlexure::GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax)

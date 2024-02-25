@@ -15,8 +15,8 @@
 //////////////////////////////////////////////////////////////////////////////
 
 
-#ifndef _ILLUMINATE_H_
-#define _ILLUMINATE_H_
+#ifndef _OpenFlexure_H_
+#define _OpenFlexure_H_
 
 #include "MMDevice.h"
 #include "DeviceBase.h"
@@ -45,17 +45,18 @@ public:
 	// -----------
 	int SetPositionSteps(long x, long y);
 	int GetPositionSteps(long& x, long& y);
-	//int SetPositionUm(double x, double y);
-	int GetPositionUm(double& x, double& y);
 	int SetRelativePositionSteps(long x, long y);
+	int GetPositionUm(double& posX, double& posY);
+	int SetPositionUm(double posX, double posY);
+	int SetRelativePositionUm(double posX, double posY);
 	int SetOrigin();
 	int SetAdapterOrigin();
 	int Home();
 	int Stop();
-	int GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax);
-	int GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax);
 	double GetStepSizeXUm() { return stepSizeUm_; }
 	double GetStepSizeYUm() { return stepSizeUm_; }
+	int GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax);
+	int GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax);
 	int IsXYStageSequenceable(bool& isSequenceable) const { isSequenceable = false; return DEVICE_OK; }
 
 
@@ -75,6 +76,8 @@ public:
 private:
 
 	// Variables for manipulating the LED array
+	long stepsX_;
+	long stepsY_;
 	bool initialized_;
 	bool portAvailable_;
 	double stepSizeUm_;
