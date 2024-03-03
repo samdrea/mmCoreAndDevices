@@ -3,14 +3,11 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Adapter for illuminate LED controller firmware
-//                Needs accompanying firmware to be installed on the LED Array:
-//                https://github.com/zfphil/illuminate
+// DESCRIPTION:   Adapter for the OpenFlexure Microscope. This adapter is used on the v5 Sangaboard.
 //
 // COPYRIGHT:     Samdrea Hsu
-// LICENSE:       BSD3
 //
-// AUTHOR:        Samdrea Hsu, samdreahsu@berkeley.edu, 8/9/2023
+// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.edu, 02/28/2024
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -112,9 +109,51 @@ int OpenFlexure::Initialize()
 		return DEVICE_ERR;
 	}
 
+	// Set the current stagePosition
+	ret = SyncState();
+	assert(DEVICE_OK == ret);
+
+	// Device is now initialized
+	initialized_ = true;
 	
 
 	return DEVICE_OK; 
+}
+
+/**
+* Sync the starting position of the stage to the cached values in the adapter
+*/
+int OpenFlexure::SyncState()
+{
+	// Make sure stage has stopped moving
+	while (Busy());
+
+	// Query for the current position (x, y, z) of the stage
+	int ret = SendSerialCommand(port_.c_str(), "p", "\n");
+
+	if (ret != DEVICE_OK) {
+		return ret;
+	}
+
+	// Get Answer
+	GetSerialAnswer(port_.c_str(), "\r", _serial_answer);
+
+	std::istringstream iss(_serial_answer);
+
+	iss >> stepsX_;
+
+	iss >> stepsY_;
+
+	// Reflect the synch-ed state in display
+	ret = OnXYStagePositionChanged(stepsX_ * stepSizeUm_, stepsY_ * stepSizeUm_);
+
+	/**
+	if (ret != DEVICE_OK) {
+		return ret;
+	}
+	*/
+
+	return DEVICE_OK;
 }
 
 
@@ -146,6 +185,9 @@ int OpenFlexure::SetPositionUm(double posX, double posY)
 */
 int OpenFlexure::GetPositionUm(double& posX, double& posY)
 {
+	// Make sure stage isn't moving
+	while (Busy());
+
 	posX = stepsX_ * stepSizeUm_;
 	posY = stepsY_ * stepSizeUm_;
 
@@ -154,10 +196,13 @@ int OpenFlexure::GetPositionUm(double& posX, double& posY)
 
 
 /**
-* Should be called by GetPositionUm(), but probably redundant, becaue I'm keeping stepsX_ and stepsY_ global variables
+* Should be called by GetPositionUm(), but probably redundant, because I'm keeping stepsX_ and stepsY_ global variables
 */
 int OpenFlexure::GetPositionSteps(long& x, long& y)
 {
+	// Make sure stage isn't moving
+	while (Busy());
+
 	x = stepsX_;
 	y = stepsY_;
 
@@ -172,6 +217,9 @@ int OpenFlexure::GetPositionSteps(long& x, long& y)
 */
 int OpenFlexure::SetRelativePositionUm(double dx, double dy)
 {
+	// Don't allow simultaneous moving
+	while (Busy());
+
 	long dxSteps = nint(dx / stepSizeUm_);
 	long dySteps = nint(dy / stepSizeUm_);
 	int ret = SetRelativePositionSteps(dxSteps, dySteps); // Stage starts moving after this step
@@ -191,7 +239,8 @@ int OpenFlexure::SetRelativePositionUm(double dx, double dy)
 */
 int OpenFlexure::SetRelativePositionSteps(long x, long y)
 {
-	while (Busy()); // Make sure stage isn't moving
+	// Don't allow simultaneous moving
+	while (Busy());
 
 	// Sending two commands sequentially
 	std::ostringstream cmd;
@@ -208,7 +257,8 @@ int OpenFlexure::SetRelativePositionSteps(long x, long y)
 
 int OpenFlexure::SetOrigin()
 {
-	while (Busy()); // make sure stage is not busy
+	// Wait for stage to stop moving
+	while (Busy());
 
 	// Set current position as origin (all motor positions set to 0)
 	int ret = SendSerialCommand(port_.c_str(), "zero", "\n");
@@ -246,7 +296,8 @@ int OpenFlexure::Stop()
 		return ret;
 	}
 
-	// TODO: maybe check for a response?
+	// Make sure current position is synched
+	SyncState();
 
 	return DEVICE_OK;
 
@@ -291,6 +342,9 @@ int OpenFlexure::OnCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 	if (pAct == MM::BeforeGet)
 	{
 		pProp->Set(_command.c_str());
+		
+		// Sync the position
+		//SyncState();
 	}
 	else if (pAct == MM::AfterSet)
 	{
@@ -313,7 +367,11 @@ int OpenFlexure::OnCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 		// Set property
 		SetProperty(g_Keyword_Response, answer.c_str());
 		//SetProperty(g_Keyword_Response, std::to_string((long long)answer.length()).c_str());
+
+		// Sync the position
+		SyncState();
 	}
+
 
 	// Return
 	// Search for error
@@ -322,6 +380,7 @@ int OpenFlexure::OnCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 		return DEVICE_ERR;
 	else
 		return DEVICE_OK;
+
 
 }
 
@@ -336,18 +395,17 @@ int OpenFlexure::OnCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 bool OpenFlexure::Busy()
 {
 
-	MM::MMTime timeout(0, 1000000); // wait for 1sec
+	MM::MMTime timeout(0, 500000); // wait for 0.5 sec
 
 	// Send a query to check if stage is moving
 	int ret = SendSerialCommand(port_.c_str(), "moving?", "\n");
 
 	// Check response
-	GetSerialAnswer(port_.c_str(), "\r", _serial_answer);
+	GetSerialAnswer(port_.c_str(), "\r", _serial_answer); // Should return "\ntrue" or "\nfalse"
 
-	if (_serial_answer.compare("true") == 0) {
+	if (_serial_answer.find("true") != -1) { // find() will return index of substring
 		return true;
-	}
-	else {
+	} else {
 		return false;
 	}
 }

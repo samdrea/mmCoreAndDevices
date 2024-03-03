@@ -3,14 +3,11 @@
 // PROJECT:       Micro-Manager
 // SUBSYSTEM:     DeviceAdapters
 //-----------------------------------------------------------------------------
-// DESCRIPTION:   Adapter for illuminate LED controller firmware
-//                Needs accompanying firmware to be installed on the LED Array:
-//                https://github.com/zfphil/illuminate
+// DESCRIPTION:   Adapter for the OpenFlexure Microscope. This adapter is used on the v5 Sangaboard.
 //
 // COPYRIGHT:     Samdrea Hsu
-// LICENSE:       BSD3
 //
-// AUTHOR:        Samdrea Hsu, samdreahsu@berkeley.edu, 8/9/2023
+// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.edu, 02/28/2024
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -66,12 +63,10 @@ public:
 	// Action Interface
 	int OnPort(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	int OnCommand(MM::PropertyBase* pPropt, MM::ActionType eAct);
-	//int OnReset(MM::PropertyBase* pPropt, MM::ActionType eAct);
-
+	
 	// Action functions
-	//int Reset();
-	int SendCommand(const char* command, bool get_response);
-	int GetResponse();
+	int SyncState();
+
 
 private:
 
