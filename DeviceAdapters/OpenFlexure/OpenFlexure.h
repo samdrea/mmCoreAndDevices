@@ -20,12 +20,52 @@
 #include <string>
 #include <map>
 
-// Global keywords to be called multiple times
-const char* g_Keyword_DeviceName = "OpenFlexure";
-//const char* g_Keyword_Reset = "Reset";
+// Global keywords 
+const char* g_XYStageDeviceName = "OpenFlexure";
+const char* g_HubDeviceName = "SangaboardHub";
 const char* g_Keyword_Response = "SerialResponse";
 const char* g_Keyword_Command = "SerialCommand";
+const char* NoHubError = "Parent Hub not defined.";
 
+
+class SangaBoardHub : public HubBase<SangaBoardHub>
+{
+public:
+	SangaBoardHub();
+	~SangaBoardHub();
+
+	// MMDevice API
+	// ------------
+	int Initialize();
+	int Shutdown();
+	void GetName(char* pszName) const;
+	bool Busy();
+
+	// Hub API
+	// --------
+	int DetectInstalledDevices();
+
+	// Action Interface
+	int OnPort(MM::PropertyBase* pPropt, MM::ActionType eAct);
+
+	// Helper Functions
+	void GetPort(std::string& port);
+
+
+private:
+	//void GetPeripheralInventory();
+	//std::vector<std::string> peripherals_;
+	bool initialized_;
+	bool busy_;
+	bool portAvailable_;
+	std::string port_;
+	std::string _command;
+	std::string _serial_answer;
+
+
+	bool IsPortAvailable() { return portAvailable_; }
+
+};
 
 class OpenFlexure : public  CXYStageBase<OpenFlexure>
 {
@@ -61,7 +101,7 @@ public:
 	void GetName(char*) const;
 
 	// Action Interface
-	int OnPort(MM::PropertyBase* pPropt, MM::ActionType eAct);
+	//int OnPort(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	int OnCommand(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	
 	// Action functions

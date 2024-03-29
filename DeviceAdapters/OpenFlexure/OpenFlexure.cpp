@@ -33,13 +33,25 @@
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-	RegisterDevice(g_Keyword_DeviceName, MM::XYStageDevice, "OpenFlexure XYStage");
+	RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "OpenFlexure XYStage");
+	RegisterDevice(g_HubDeviceName, MM::HubDevice, "Sangaboard Hub");
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
 {
+	if (deviceName == 0)
+		return 0;
 
-	return new OpenFlexure;
+	if (strcmp(deviceName, g_XYStageDeviceName) == 0)
+	{
+		return new OpenFlexure; // Create xy stage
+	}
+	else if (strcmp(deviceName, g_HubDeviceName) == 0)
+	{
+		return new SangaBoardHub; // Create hub
+	}
+	
+	return 0; // Device name not recognized
 
 }
 
@@ -47,6 +59,135 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 {
 	delete pDevice;
 }
+
+///////////////////////////////////////////////////////////////////////////////
+// Sangaboard hub implementation
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+/*
+* Constructor
+*/
+SangaBoardHub::SangaBoardHub() : initialized_(false), port_("Undefined"), portAvailable_(false), busy_(false)
+{
+	// Initialize default error messages
+	InitializeDefaultErrorMessages();
+
+	// Pre-initialization property: port name
+	CPropertyAction* pAct = new CPropertyAction(this, &SangaBoardHub::OnPort);
+	CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
+}
+
+/*
+* Destructor
+*/
+SangaBoardHub::~SangaBoardHub()
+{
+	Shutdown();
+}
+
+
+
+int SangaBoardHub::Initialize()
+{
+	initialized_ = true;
+
+	// TODO: Add some properties??
+
+	return DEVICE_OK;
+
+}
+
+/*
+* Shutdown the hub
+*/
+int SangaBoardHub::Shutdown()
+{
+	initialized_ = false;
+	return DEVICE_OK;
+}
+
+/** Comment from MMDevice.h
+* 
+* Instantiate all available child peripheral devices.
+*
+* The implementation must instantiate all available child devices and
+* register them by calling AddInstalledDevice() (currently in HubBase).
+*
+* Instantiated peripherals are owned by the Core, and will be destroyed
+* by calling the usual ModuleInterface DeleteDevice() function.
+*
+* The result of calling this function more than once for a given hub
+* instance is undefined.
+*/
+int SangaBoardHub::DetectInstalledDevices()
+{
+
+	ClearInstalledDevices();
+
+	// make sure this method is called before we look for available devices
+	//InitializeModuleData();
+
+	char hubName[MM::MaxStrLength];
+	GetName(hubName); // this device name
+	for (unsigned i = 0; i < GetNumberOfDevices(); i++)
+	{
+		char deviceName[MM::MaxStrLength];
+		bool success = GetDeviceName(i, deviceName, MM::MaxStrLength);
+		if (success && (strcmp(hubName, deviceName) != 0))
+		{
+			MM::Device* pDev = CreateDevice(deviceName);
+			AddInstalledDevice(pDev);
+		}
+	}
+
+	return DEVICE_OK;
+}
+
+
+void SangaBoardHub::GetName(char* name) const
+{
+	CDeviceUtils::CopyLimitedString(name, g_HubDeviceName);
+}
+
+bool SangaBoardHub::Busy()
+{
+	return false;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Action handlers
+///////////////////////////////////////////////////////////////////////////////
+/*
+ * Sets the Serial Port to be used.
+ * Should be called before initialization
+ */
+int SangaBoardHub::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(port_.c_str());
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		pProp->Get(port_);
+		portAvailable_ = true;
+	}
+
+	return DEVICE_OK;
+}
+
+
+
+/////// Helper Functions
+
+void SangaBoardHub::GetPort(std::string& port)
+{
+	port = this->port_;
+
+}
+
+
 
 ///////////////////////////////////////////////////////////////////////////////
 // OpenFlexure implementation
@@ -57,13 +198,15 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 */
 OpenFlexure::OpenFlexure() : initialized_(false), portAvailable_(false), stepSizeUm_(0.07), stepsX_(0), stepsY_(0)
 {
+	// Parent ID display
+	CreateHubIDProperty();
 
 	// Initialize default error messages
 	InitializeDefaultErrorMessages();
 
 	//pre initialization property: port name
-	CPropertyAction* pAct = new CPropertyAction(this, &OpenFlexure::OnPort);
-	CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
+	//CPropertyAction* pAct = new CPropertyAction(this, &OpenFlexure::OnPort);
+	//CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
 
 
 }
@@ -85,6 +228,21 @@ int OpenFlexure::Initialize()
 	if (initialized_) {
 		return DEVICE_OK;
 	}
+
+
+	// Create pointer to parent hub (sangaboard)
+	SangaBoardHub* pHub = static_cast<SangaBoardHub*>(GetParentHub());
+	if (pHub)
+	{
+		char hubLabel[MM::MaxStrLength];
+		pHub->GetLabel(hubLabel);
+		SetParentID(hubLabel); // for backward comp.
+	}
+	else
+		LogMessage(NoHubError);
+
+	// Set port name
+	pHub->GetPort(this->port_);
 
 	// Manual Command Interface
 	CPropertyAction* pCommand = new CPropertyAction(this, &OpenFlexure::OnCommand);
@@ -319,20 +477,20 @@ int OpenFlexure::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& y
 /*
 * Set the port to be used
 */
-int OpenFlexure::OnPort(MM::PropertyBase* pProp, MM::ActionType pAct)
-{
-	if (pAct == MM::BeforeGet)
-	{
-		pProp->Set(port_.c_str());
-	}
-	else if (pAct == MM::AfterSet)
-	{
-		pProp->Get(port_);
-		portAvailable_ = true;
-	}
-
-	return DEVICE_OK;
-}
+//int OpenFlexure::OnPort(MM::PropertyBase* pProp, MM::ActionType pAct)
+//{
+//	if (pAct == MM::BeforeGet)
+//	{
+//		pProp->Set(port_.c_str());
+//	}
+//	else if (pAct == MM::AfterSet)
+//	{
+//		pProp->Get(port_);
+//		portAvailable_ = true;
+//	}
+//
+//	return DEVICE_OK;
+//}
 
 /*
 Send a command directly to the stage
@@ -415,7 +573,7 @@ bool OpenFlexure::Busy()
 */
 void OpenFlexure::GetName(char* name) const
 {
-	CDeviceUtils::CopyLimitedString(name, "g_Keyword_DeviceName");
+	CDeviceUtils::CopyLimitedString(name, g_XYStageDeviceName);
 }
 
 /*
