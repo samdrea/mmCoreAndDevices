@@ -27,6 +27,10 @@ const char* g_Keyword_Response = "SerialResponse";
 const char* g_Keyword_Command = "SerialCommand";
 const char* NoHubError = "Parent Hub not defined.";
 
+// Custom Error texts
+#define DEVICE_STAGE_STILL_MOVING     42
+const char* const g_Msg_DEVICE_STAGE_STILL_MOVING = "Stage is still moving. Current move aborted.";
+
 
 class SangaBoardHub : public HubBase<SangaBoardHub>
 {

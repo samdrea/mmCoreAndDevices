@@ -72,6 +72,9 @@ SangaBoardHub::SangaBoardHub() : initialized_(false), port_("Undefined"), portAv
 	// Initialize default error messages
 	InitializeDefaultErrorMessages();
 
+	// Initialize custom error messages
+	SetErrorText(DEVICE_STAGE_STILL_MOVING, g_Msg_DEVICE_STAGE_STILL_MOVING);
+
 	// Pre-initialization property: port name
 	CPropertyAction* pAct = new CPropertyAction(this, &SangaBoardHub::OnPort);
 	CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
@@ -164,7 +167,10 @@ void SangaBoardHub::GetName(char* name) const
 bool SangaBoardHub::Busy()
 {
 
-	MM::MMTime timeout(0, 500000); // wait for 0.5 sec
+	//MM::MMTime timeout(0, 500000); // wait for 0.5 sec
+
+	// Purge COM Port
+	PurgeComPort(port_.c_str());
 
 	// Send a query to check if stage is moving
 	int ret = SendSerialCommand(port_.c_str(), "moving?", "\n");
@@ -276,7 +282,9 @@ int SangaBoardHub::SendCommand(std::string cmd, std::string& ans)
 	MMThreadGuard g(serial_lock_);
 
 	// Allow previous move to finish before sending new command through serial port
-	while (Busy());
+	if (Busy() && cmd.find("mr") != -1) {
+			return DEVICE_STAGE_STILL_MOVING;
+	}
 
 	// Send command and receive response
 	int ret = SendSerialCommand(port_.c_str(), cmd.c_str(), "\n");
@@ -479,9 +487,9 @@ int OpenFlexure::SetRelativePositionSteps(long x, long y)
 	std::ostringstream cmd;
 	cmd << "mrx " << x << "\nmry " << y; // move in x first then y (arbitrary choice)
 
-	pHub->SendCommand(cmd.str(), _serial_answer);
+	int ret = pHub->SendCommand(cmd.str(), _serial_answer);
 
-	return DEVICE_OK;
+	return ret;
 }
 
 
@@ -490,9 +498,9 @@ int OpenFlexure::SetOrigin()
 
 	// Set current position as origin (all motor positions set to 0)
 	std::string cmd = "zero";
-	pHub->SendCommand(cmd, _serial_answer);
+	int ret = pHub->SendCommand(cmd, _serial_answer);
 
-	return DEVICE_OK;
+	return ret;
 }
 
 
