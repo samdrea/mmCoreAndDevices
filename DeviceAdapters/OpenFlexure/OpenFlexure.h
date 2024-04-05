@@ -47,9 +47,11 @@ public:
 
 	// Action Interface
 	int OnPort(MM::PropertyBase* pPropt, MM::ActionType eAct);
+	int OnManualCommand(MM::PropertyBase* pPropt, MM::ActionType eAct);
 
 	// Helper Functions
 	void GetPort(std::string& port);
+	int SendCommand(std::string cmd, std::string& res);
 
 
 private:
@@ -61,6 +63,7 @@ private:
 	std::string port_;
 	std::string _command;
 	std::string _serial_answer;
+	MMThreadLock serial_lock_;
 
 
 	bool IsPortAvailable() { return portAvailable_; }
@@ -97,12 +100,12 @@ public:
 	int IsXYStageSequenceable(bool& isSequenceable) const { isSequenceable = false; return DEVICE_OK; }
 
 
-	bool Busy();
+	bool Busy() { return false; };
 	void GetName(char*) const;
 
 	// Action Interface
 	//int OnPort(MM::PropertyBase* pPropt, MM::ActionType eAct);
-	int OnCommand(MM::PropertyBase* pPropt, MM::ActionType eAct);
+	//int OnCommand(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	
 	// Action functions
 	int SyncState();
@@ -117,9 +120,10 @@ private:
 	bool portAvailable_;
 	double stepSizeUm_;
 	std::string port_;
-	MMThreadLock lock_;
-	std::string _command;
+	//MMThreadLock lock_;
+	//std::string _command;
 	std::string _serial_answer;
+	SangaBoardHub* pHub;
 
 
 	bool IsPortAvailable() { return portAvailable_; }

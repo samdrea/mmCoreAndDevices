@@ -75,6 +75,7 @@ SangaBoardHub::SangaBoardHub() : initialized_(false), port_("Undefined"), portAv
 	// Pre-initialization property: port name
 	CPropertyAction* pAct = new CPropertyAction(this, &SangaBoardHub::OnPort);
 	CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
+
 }
 
 /*
@@ -91,7 +92,15 @@ int SangaBoardHub::Initialize()
 {
 	initialized_ = true;
 
-	// TODO: Add some properties??
+
+	// Manual Command Interface
+	CPropertyAction* pCommand = new CPropertyAction(this, &SangaBoardHub::OnManualCommand);
+	int ret = CreateProperty(g_Keyword_Command, "", MM::String, false, pCommand);
+	assert(DEVICE_OK == ret);
+
+	// Most Recent Serial Response
+	ret = CreateProperty(g_Keyword_Response, "", MM::String, false);
+	assert(DEVICE_OK == ret);
 
 	return DEVICE_OK;
 
@@ -149,9 +158,26 @@ void SangaBoardHub::GetName(char* name) const
 	CDeviceUtils::CopyLimitedString(name, g_HubDeviceName);
 }
 
+/*
+* Make sure no moves are in progress
+*/
 bool SangaBoardHub::Busy()
 {
-	return false;
+
+	MM::MMTime timeout(0, 500000); // wait for 0.5 sec
+
+	// Send a query to check if stage is moving
+	int ret = SendSerialCommand(port_.c_str(), "moving?", "\n");
+
+	// Check response
+	GetSerialAnswer(port_.c_str(), "\r", _serial_answer); // Should return "\ntrue" or "\nfalse"
+
+	if (_serial_answer.find("true") != -1) { // find() will return index of substring
+		return true;
+	}
+	else { //if (_serial_answer.find("false") == -1) { // what if serial answer is neither true or false
+		return false;
+	}
 }
 
 
@@ -177,7 +203,60 @@ int SangaBoardHub::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 	return DEVICE_OK;
 }
 
+/*
+Send a command directly to the stage through property browser
+*/
+int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
+{
+	if (pAct == MM::BeforeGet)
+	{
+		pProp->Set(_command.c_str());
 
+		// Sync the position
+		//SyncState();
+	}
+	else if (pAct == MM::AfterSet)
+	{
+		// Get command string
+		pProp->Get(_command);
+		
+		// Purge COM Port
+		PurgeComPort(port_.c_str());
+
+		// Send command
+		SendCommand(_command, _serial_answer);
+
+		// Set property
+		SetProperty(g_Keyword_Response, _serial_answer.c_str());
+
+
+		// Sync the xy, z, and LED to possible changes made through serial call
+		for (unsigned i = 0; i < GetNumberOfDevices(); i++) {
+
+			char deviceName[MM::MaxStrLength];
+			bool success = GetDeviceName(i, deviceName, MM::MaxStrLength);
+
+			// Sync xy stage
+			if (success && (strcmp(g_XYStageDeviceName, deviceName) == 0))
+			{
+				OpenFlexure* xyStage = dynamic_cast<OpenFlexure*>(GetDevice(deviceName));
+				xyStage->SyncState();
+			}
+
+			// Sync z stage
+		}
+	}
+
+	// Return
+	// Search for error
+	std::string error_flag("ERROR");
+	if (_serial_answer.find(error_flag) != std::string::npos)
+		return DEVICE_ERR;
+	else
+		return DEVICE_OK;
+
+
+}
 
 /////// Helper Functions
 
@@ -186,6 +265,36 @@ void SangaBoardHub::GetPort(std::string& port)
 	port = this->port_;
 
 }
+
+/**
+* Manages serial port calls by peripheral devices
+* Locks thread to use serial port so only one serial call is done at a time
+*/
+int SangaBoardHub::SendCommand(std::string cmd, std::string& ans)
+{
+	// Lock the serial port with threadguard
+	MMThreadGuard g(serial_lock_);
+
+	// Allow previous move to finish before sending new command through serial port
+	while (Busy());
+
+	// Send command and receive response
+	int ret = SendSerialCommand(port_.c_str(), cmd.c_str(), "\n");
+
+	if (ret != DEVICE_OK) {
+		return ret;
+	}
+
+	ret = GetSerialAnswer(port_.c_str(), "\r", ans);
+
+	if (ret != DEVICE_OK) {
+		return ret;
+	}
+
+	return DEVICE_OK;
+
+} // End of function automatically unlocks the lock
+
 
 
 
@@ -231,7 +340,7 @@ int OpenFlexure::Initialize()
 
 
 	// Create pointer to parent hub (sangaboard)
-	SangaBoardHub* pHub = static_cast<SangaBoardHub*>(GetParentHub());
+	pHub = static_cast<SangaBoardHub*>(GetParentHub());
 	if (pHub)
 	{
 		char hubLabel[MM::MaxStrLength];
@@ -242,16 +351,7 @@ int OpenFlexure::Initialize()
 		LogMessage(NoHubError);
 
 	// Set port name
-	pHub->GetPort(this->port_);
-
-	// Manual Command Interface
-	CPropertyAction* pCommand = new CPropertyAction(this, &OpenFlexure::OnCommand);
-	int ret = CreateProperty(g_Keyword_Command, "", MM::String, false, pCommand);
-	assert(DEVICE_OK == ret);
-
-	// Most Recent Serial Response
-	ret = CreateProperty(g_Keyword_Response, "", MM::String, false);
-	assert(DEVICE_OK == ret);
+	//pHub->GetPort(this->port_);
 
 
 	// Check status to see if device is ready to start
@@ -261,15 +361,14 @@ int OpenFlexure::Initialize()
 	}
 
 	// Use non-blocking moves
-	ret = SendSerialCommand(port_.c_str(), "blocking_moves false", "\n");
-	GetSerialAnswer(port_.c_str(), "\r", _serial_answer);
-	if (_serial_answer.compare("done.") != 0) {
+	std::string cmd = "blocking_moves false";
+	pHub->SendCommand(cmd, _serial_answer);
+	if (_serial_answer.find("done") == -1) {
 		return DEVICE_ERR;
 	}
 
 	// Set the current stagePosition
-	ret = SyncState();
-	assert(DEVICE_OK == ret);
+	SyncState();
 
 	// Device is now initialized
 	initialized_ = true;
@@ -283,19 +382,11 @@ int OpenFlexure::Initialize()
 */
 int OpenFlexure::SyncState()
 {
-	// Make sure stage has stopped moving
-	while (Busy());
+	// Query for the current position [x y z] of the stage
+	std::string cmd = "p";
+	pHub->SendCommand(cmd, _serial_answer);
 
-	// Query for the current position (x, y, z) of the stage
-	int ret = SendSerialCommand(port_.c_str(), "p", "\n");
-
-	if (ret != DEVICE_OK) {
-		return ret;
-	}
-
-	// Get Answer
-	GetSerialAnswer(port_.c_str(), "\r", _serial_answer);
-
+	// Parse the position of the stage into the x and y componennts
 	std::istringstream iss(_serial_answer);
 
 	iss >> stepsX_;
@@ -303,13 +394,11 @@ int OpenFlexure::SyncState()
 	iss >> stepsY_;
 
 	// Reflect the synch-ed state in display
-	ret = OnXYStagePositionChanged(stepsX_ * stepSizeUm_, stepsY_ * stepSizeUm_);
+	int ret = OnXYStagePositionChanged(stepsX_ * stepSizeUm_, stepsY_ * stepSizeUm_);
 
-	/**
 	if (ret != DEVICE_OK) {
 		return ret;
 	}
-	*/
 
 	return DEVICE_OK;
 }
@@ -326,13 +415,10 @@ int OpenFlexure::SetPositionSteps(long x, long y)
 }
 
 /**
-* Rewriting a function that I shouldn't have messed with...
-* According to DeviceBase.h, updates cached xPos and yPos and then calls OnXYStagePositionChanged
-* Calls SetPositionSteps, which is the function users should implement to actuate change in physical xy stage device
+* 	Manually change the xPos and yPos
 */
 int OpenFlexure::SetPositionUm(double posX, double posY)
 {
-	// Manually change the xPos and yPos
 	// Not sure where this function is actually called...
 	return DEVICE_OK;
 }
@@ -343,9 +429,6 @@ int OpenFlexure::SetPositionUm(double posX, double posY)
 */
 int OpenFlexure::GetPositionUm(double& posX, double& posY)
 {
-	// Make sure stage isn't moving
-	while (Busy());
-
 	posX = stepsX_ * stepSizeUm_;
 	posY = stepsY_ * stepSizeUm_;
 
@@ -358,9 +441,6 @@ int OpenFlexure::GetPositionUm(double& posX, double& posY)
 */
 int OpenFlexure::GetPositionSteps(long& x, long& y)
 {
-	// Make sure stage isn't moving
-	while (Busy());
-
 	x = stepsX_;
 	y = stepsY_;
 
@@ -375,9 +455,6 @@ int OpenFlexure::GetPositionSteps(long& x, long& y)
 */
 int OpenFlexure::SetRelativePositionUm(double dx, double dy)
 {
-	// Don't allow simultaneous moving
-	while (Busy());
-
 	long dxSteps = nint(dx / stepSizeUm_);
 	long dySteps = nint(dy / stepSizeUm_);
 	int ret = SetRelativePositionSteps(dxSteps, dySteps); // Stage starts moving after this step
@@ -397,17 +474,12 @@ int OpenFlexure::SetRelativePositionUm(double dx, double dy)
 */
 int OpenFlexure::SetRelativePositionSteps(long x, long y)
 {
-	// Don't allow simultaneous moving
-	while (Busy());
 
 	// Sending two commands sequentially
 	std::ostringstream cmd;
 	cmd << "mrx " << x << "\nmry " << y; // move in x first then y (arbitrary choice)
-	int ret = SendSerialCommand(port_.c_str(), cmd.str().c_str(), "\n");
 
-	if (ret != DEVICE_OK) {
-		return ret;
-	}
+	pHub->SendCommand(cmd.str(), _serial_answer);
 
 	return DEVICE_OK;
 }
@@ -415,15 +487,10 @@ int OpenFlexure::SetRelativePositionSteps(long x, long y)
 
 int OpenFlexure::SetOrigin()
 {
-	// Wait for stage to stop moving
-	while (Busy());
 
 	// Set current position as origin (all motor positions set to 0)
-	int ret = SendSerialCommand(port_.c_str(), "zero", "\n");
-
-	if (ret != DEVICE_OK) {
-		return ret;
-	}
+	std::string cmd = "zero";
+	pHub->SendCommand(cmd, _serial_answer);
 
 	return DEVICE_OK;
 }
@@ -448,11 +515,8 @@ int OpenFlexure::Home()
 int OpenFlexure::Stop()
 {
 	// send the stop command to the stage
-	int ret = SendSerialCommand(port_.c_str(), "stop", "\n");
-
-	if (ret != DEVICE_OK) {
-		return ret;
-	}
+	std::string cmd = "stop";
+	pHub->SendCommand(cmd, _serial_answer);
 
 	// Make sure current position is synched
 	SyncState();
@@ -492,81 +556,12 @@ int OpenFlexure::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& y
 //	return DEVICE_OK;
 //}
 
-/*
-Send a command directly to the stage
-*/
-int OpenFlexure::OnCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
-{
-	if (pAct == MM::BeforeGet)
-	{
-		pProp->Set(_command.c_str());
-		
-		// Sync the position
-		//SyncState();
-	}
-	else if (pAct == MM::AfterSet)
-	{
-		// Get command string
-		pProp->Get(_command);
 
-		// Append terminator
-		_command += "\n";
-
-		// Purge COM Port
-		PurgeComPort(port_.c_str());
-
-		// Send command
-		WriteToComPort(port_.c_str(), (unsigned char*)_command.c_str(), (unsigned int)_command.length());
-
-		// Get Answer
-		std::string answer;
-		GetSerialAnswer(port_.c_str(), "\r", answer);
-
-		// Set property
-		SetProperty(g_Keyword_Response, answer.c_str());
-		//SetProperty(g_Keyword_Response, std::to_string((long long)answer.length()).c_str());
-
-		// Sync the position
-		SyncState();
-	}
-
-
-	// Return
-	// Search for error
-	std::string error_flag("ERROR");
-	if (_serial_answer.find(error_flag) != std::string::npos)
-		return DEVICE_ERR;
-	else
-		return DEVICE_OK;
-
-
-}
 
 
 
 //////////// Helper Functions
 
-
-/*
-* Make sure no moves are in progress
-*/
-bool OpenFlexure::Busy()
-{
-
-	MM::MMTime timeout(0, 500000); // wait for 0.5 sec
-
-	// Send a query to check if stage is moving
-	int ret = SendSerialCommand(port_.c_str(), "moving?", "\n");
-
-	// Check response
-	GetSerialAnswer(port_.c_str(), "\r", _serial_answer); // Should return "\ntrue" or "\nfalse"
-
-	if (_serial_answer.find("true") != -1) { // find() will return index of substring
-		return true;
-	} else {
-		return false;
-	}
-}
 
 /*
 * Pass a copy of the device name to the location given in the parameters
