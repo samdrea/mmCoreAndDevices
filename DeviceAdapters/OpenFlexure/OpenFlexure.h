@@ -21,8 +21,11 @@
 #include <map>
 
 // Global keywords 
-const char* g_XYStageDeviceName = "OpenFlexure";
+const char* g_XYStageDeviceName = "XY Stage";
 const char* g_HubDeviceName = "SangaboardHub";
+const char* g_ZStageDeviceName = "Z Stage";
+const char* g_ShutterDeviceName = "LED illumination";
+
 const char* g_Keyword_Response = "SerialResponse";
 const char* g_Keyword_Command = "SerialCommand";
 const char* NoHubError = "Parent Hub not defined.";
@@ -74,11 +77,11 @@ private:
 
 };
 
-class OpenFlexure : public  CXYStageBase<OpenFlexure>
+class XYStage : public  CXYStageBase<XYStage>
 {
 public:
-	OpenFlexure();
-	~OpenFlexure();
+	XYStage();
+	~XYStage();
 
 	// MMDevice API
 	// ------------
@@ -104,7 +107,7 @@ public:
 	int IsXYStageSequenceable(bool& isSequenceable) const { isSequenceable = false; return DEVICE_OK; }
 
 
-	bool Busy() { return false; };
+	bool Busy() { return false; }
 	void GetName(char*) const;
 
 	// Action Interface
@@ -133,6 +136,84 @@ private:
 	bool IsPortAvailable() { return portAvailable_; }
 
 };
+
+
+
+class ZStage : public CStageBase<ZStage>
+{
+public:
+	ZStage();
+	~ZStage();
+
+
+	// MMDevice API
+	// ------------
+	int Initialize();
+	int Shutdown() { initialized_ = false; return DEVICE_OK; }
+	void GetName(char* name) const;
+
+	// ZStage API
+	// -----------
+	int SetPositionUm(double pos) { return DEVICE_UNSUPPORTED_COMMAND;}
+	int SetPositionSteps(long steps) { return DEVICE_UNSUPPORTED_COMMAND;}
+	int SetRelativePositionUm(double d);
+	int SetRelativePositionSteps(long z);
+	int Stop() {return DEVICE_UNSUPPORTED_COMMAND;} 
+	int GetPositionUm(double& pos);
+	int GetPositionSteps(long& steps);
+	int SetOrigin();
+	int GetLimits(double& lower, double& upper) { return DEVICE_UNSUPPORTED_COMMAND;} // nah 
+	int IsStageSequenceable(bool& isSequenceable) const { isSequenceable = false;  return DEVICE_OK;}
+	bool IsContinuousFocusDrive() const  { return false; }
+	bool Busy() { return false; }
+
+	// Action functions
+	int SyncState();
+
+
+private:
+	long stepsZ_;
+	bool initialized_;
+	double stepSizeUm_;
+	std::string _serial_answer;
+	SangaBoardHub* pHub;
+};
+
+
+class LEDIllumination : public CShutterBase<LEDIllumination>
+{
+public:
+	LEDIllumination() : state_(false), initialized_(false), changedTime_(0.0)
+	{
+		EnableDelay(); // signals that the delay setting will be used
+		// parent ID display
+		CreateHubIDProperty();
+	}
+	~LEDIllumination() {}
+
+	int Initialize();
+	int Shutdown() { initialized_ = false; return DEVICE_OK; }
+	void GetName(char* name) const;
+
+
+	// Shutter API
+	int SetOpen(bool open);
+	int GetOpen(bool& open);
+	int Fire(double deltaT) { return DEVICE_UNSUPPORTED_COMMAND;}
+	bool Busy() { return false; }
+
+	// action interface
+	int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
+
+private:
+	bool state_;
+	bool initialized_;
+	MM::MMTime changedTime_;
+	std::string _serial_answer;
+	SangaBoardHub* pHub;
+
+};
+
 
 
 #endif 

@@ -17,9 +17,6 @@
 #include <cstdio>
 #include <cstring>
 #include <string>
-//#include "rapidjson/document.h"
-//#include "rapidjson/writer.h"
-//#include "rapidjson/stringbuffer.h"
 #include <algorithm>
 #include <math.h>
 
@@ -33,8 +30,11 @@
 ///////////////////////////////////////////////////////////////////////////////
 MODULE_API void InitializeModuleData()
 {
-	RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "OpenFlexure XYStage");
+	RegisterDevice(g_XYStageDeviceName, MM::XYStageDevice, "XY Stage");
 	RegisterDevice(g_HubDeviceName, MM::HubDevice, "Sangaboard Hub");
+	RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "Z Stage");
+	RegisterDevice(g_ShutterDeviceName, MM::ShutterDevice, "LED Illumination");
+
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -44,13 +44,21 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
 
 	if (strcmp(deviceName, g_XYStageDeviceName) == 0)
 	{
-		return new OpenFlexure; // Create xy stage
+		return new XYStage; // Create xy stage
 	}
 	else if (strcmp(deviceName, g_HubDeviceName) == 0)
 	{
 		return new SangaBoardHub; // Create hub
 	}
-	
+	else if (strcmp(deviceName, g_ZStageDeviceName) == 0)
+	{
+		return new ZStage; // Create Z stage
+	}
+	else if (strcmp(deviceName, g_ShutterDeviceName) == 0)
+	{
+		return new LEDIllumination; // Create LED shutter device
+	}
+
 	return 0; // Device name not recognized
 
 }
@@ -152,6 +160,8 @@ int SangaBoardHub::DetectInstalledDevices()
 		}
 	}
 
+
+
 	return DEVICE_OK;
 }
 
@@ -245,7 +255,7 @@ int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 			// Sync xy stage
 			if (success && (strcmp(g_XYStageDeviceName, deviceName) == 0))
 			{
-				OpenFlexure* xyStage = dynamic_cast<OpenFlexure*>(GetDevice(deviceName));
+				XYStage* xyStage = dynamic_cast<XYStage*>(GetDevice(deviceName));
 				xyStage->SyncState();
 			}
 
@@ -313,10 +323,10 @@ int SangaBoardHub::SendCommand(std::string cmd, std::string& ans)
 /*
 * Constructor, called when device is selected
 */
-OpenFlexure::OpenFlexure() : initialized_(false), portAvailable_(false), stepSizeUm_(0.07), stepsX_(0), stepsY_(0)
+XYStage::XYStage() : initialized_(false), portAvailable_(false), stepSizeUm_(0.07), stepsX_(0), stepsY_(0)
 {
 	// Parent ID display
-	CreateHubIDProperty();
+	//CreateHubIDProperty();
 
 	// Initialize default error messages
 	InitializeDefaultErrorMessages();
@@ -331,7 +341,7 @@ OpenFlexure::OpenFlexure() : initialized_(false), portAvailable_(false), stepSiz
 /*
 * Destructor
 */
-OpenFlexure::~OpenFlexure()
+XYStage::~XYStage()
 {
 	Shutdown();
 }
@@ -340,7 +350,7 @@ OpenFlexure::~OpenFlexure()
 /*
 * Initialize the properties and attach the action pointers where needed
 */
-int OpenFlexure::Initialize()
+int XYStage::Initialize()
 {
 	if (initialized_) {
 		return DEVICE_OK;
@@ -388,7 +398,7 @@ int OpenFlexure::Initialize()
 /**
 * Sync the starting position of the stage to the cached values in the adapter
 */
-int OpenFlexure::SyncState()
+int XYStage::SyncState()
 {
 	// Query for the current position [x y z] of the stage
 	std::string cmd = "p";
@@ -417,7 +427,7 @@ int OpenFlexure::SyncState()
 * Called by SetPositionUm()
 * Probably best to call SetRelativePosition() to complete this function
 */
-int OpenFlexure::SetPositionSteps(long x, long y)
+int XYStage::SetPositionSteps(long x, long y)
 {
 	return DEVICE_OK;
 }
@@ -425,7 +435,7 @@ int OpenFlexure::SetPositionSteps(long x, long y)
 /**
 * 	Manually change the xPos and yPos
 */
-int OpenFlexure::SetPositionUm(double posX, double posY)
+int XYStage::SetPositionUm(double posX, double posY)
 {
 	// Not sure where this function is actually called...
 	return DEVICE_OK;
@@ -435,7 +445,7 @@ int OpenFlexure::SetPositionUm(double posX, double posY)
 /**
 * Called when stage control GUI is opened
 */
-int OpenFlexure::GetPositionUm(double& posX, double& posY)
+int XYStage::GetPositionUm(double& posX, double& posY)
 {
 	posX = stepsX_ * stepSizeUm_;
 	posY = stepsY_ * stepSizeUm_;
@@ -447,7 +457,7 @@ int OpenFlexure::GetPositionUm(double& posX, double& posY)
 /**
 * Should be called by GetPositionUm(), but probably redundant, because I'm keeping stepsX_ and stepsY_ global variables
 */
-int OpenFlexure::GetPositionSteps(long& x, long& y)
+int XYStage::GetPositionSteps(long& x, long& y)
 {
 	x = stepsX_;
 	y = stepsY_;
@@ -461,7 +471,7 @@ int OpenFlexure::GetPositionSteps(long& x, long& y)
 * Calls on SetRelativePositionSteps to actuate change in physical device
 * Updates OnXYStagePositionChanged with xPos and yPos
 */
-int OpenFlexure::SetRelativePositionUm(double dx, double dy)
+int XYStage::SetRelativePositionUm(double dx, double dy)
 {
 	long dxSteps = nint(dx / stepSizeUm_);
 	long dySteps = nint(dy / stepSizeUm_);
@@ -480,7 +490,7 @@ int OpenFlexure::SetRelativePositionUm(double dx, double dy)
 * According to DeviceBase.h, it uses GetPositionSteps() and then SetPositionSteps()
 * Since OpenFlexure has a specific function for setting relative position, I'm actualizing the xy stage device here
 */
-int OpenFlexure::SetRelativePositionSteps(long x, long y)
+int XYStage::SetRelativePositionSteps(long x, long y)
 {
 
 	// Sending two commands sequentially
@@ -493,7 +503,7 @@ int OpenFlexure::SetRelativePositionSteps(long x, long y)
 }
 
 
-int OpenFlexure::SetOrigin()
+int XYStage::SetOrigin()
 {
 
 	// Set current position as origin (all motor positions set to 0)
@@ -507,20 +517,20 @@ int OpenFlexure::SetOrigin()
 /**
 * Could be the function to sync adapter to the stage's actual positions... if fails, I'll implement a sync() myself
 */
-int OpenFlexure::SetAdapterOrigin()
+int XYStage::SetAdapterOrigin()
 {
 	return DEVICE_OK;
 }
 
 
-int OpenFlexure::Home()
+int XYStage::Home()
 {
 	//TODO: Query the position steps and set the number of steps to opposite that
 	return DEVICE_OK;
 }
 
 
-int OpenFlexure::Stop()
+int XYStage::Stop()
 {
 	// send the stop command to the stage
 	std::string cmd = "stop";
@@ -535,37 +545,14 @@ int OpenFlexure::Stop()
 
 
 
-int OpenFlexure::GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax)
+int XYStage::GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax)
 {
 	return DEVICE_OK;
 }
-int OpenFlexure::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax)
+int XYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax)
 {
 	return DEVICE_OK;
 }
-
-//////////////// Action functions
-
-/*
-* Set the port to be used
-*/
-//int OpenFlexure::OnPort(MM::PropertyBase* pProp, MM::ActionType pAct)
-//{
-//	if (pAct == MM::BeforeGet)
-//	{
-//		pProp->Set(port_.c_str());
-//	}
-//	else if (pAct == MM::AfterSet)
-//	{
-//		pProp->Get(port_);
-//		portAvailable_ = true;
-//	}
-//
-//	return DEVICE_OK;
-//}
-
-
-
 
 
 //////////// Helper Functions
@@ -574,7 +561,7 @@ int OpenFlexure::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& y
 /*
 * Pass a copy of the device name to the location given in the parameters
 */
-void OpenFlexure::GetName(char* name) const
+void XYStage::GetName(char* name) const
 {
 	CDeviceUtils::CopyLimitedString(name, g_XYStageDeviceName);
 }
@@ -582,11 +569,290 @@ void OpenFlexure::GetName(char* name) const
 /*
 * Shutdown the OpenFlexure
 */
-int OpenFlexure::Shutdown()
+int XYStage::Shutdown()
 {
 	initialized_ = false;
 	return DEVICE_OK;
 }
 
 
+///////////////////////////////////////////////////////////////////////////////
+// ZStage implementation
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+/*
+* Constructor
+*/
+ZStage::ZStage() : initialized_(false), stepSizeUm_(0.05)
+{
+
+	// Parent ID display
+	//CreateHubIDProperty();
+
+	// Initialize default error messages
+	InitializeDefaultErrorMessages();
+
+}
+
+/*
+* Destructor
+*/
+ZStage::~ZStage()
+{
+	Shutdown();
+}
+
+/*
+* Initialize the properties and attach the action pointers where needed
+*/
+int ZStage::Initialize()
+{
+	if (initialized_) {
+		return DEVICE_OK;
+	}
+
+
+	// Create pointer to parent hub (sangaboard)
+	pHub = static_cast<SangaBoardHub*>(GetParentHub());
+	if (pHub)
+	{
+		char hubLabel[MM::MaxStrLength];
+		pHub->GetLabel(hubLabel);
+		SetParentID(hubLabel); // for backward comp.
+	}
+	else
+		LogMessage(NoHubError);
+
+
+	// Check status to see if device is ready to start
+	int status = UpdateStatus();
+	if (status != DEVICE_OK) {
+		return status;
+	}
+
+	// Use non-blocking moves
+	std::string cmd = "blocking_moves false";
+	pHub->SendCommand(cmd, _serial_answer);
+	if (_serial_answer.find("done") == -1) {
+		return DEVICE_ERR;
+	}
+
+	// Set the current stagePosition
+	SyncState();
+
+	// Device is now initialized
+	initialized_ = true;
+
+
+	return DEVICE_OK;
+}
+/**
+* Sync the starting position of the stage to the cached values in the adapter
+*/
+int ZStage::SyncState()
+{
+	// Query for the current position [x y z] of the stage
+	std::string cmd = "p";
+	pHub->SendCommand(cmd, _serial_answer);
+
+	// Parse the position of the stage to just get the z position
+	std::istringstream iss(_serial_answer);
+
+	iss >> stepsZ_ >> stepsZ_ >> stepsZ_;
+
+	// Reflect the synch-ed state in display
+	int ret = OnStagePositionChanged(stepsZ_ * stepSizeUm_);
+
+	if (ret != DEVICE_OK) {
+		return ret;
+	}
+
+	return DEVICE_OK;
+}
+
+/**
+* Return position in microns
+*/
+int ZStage::GetPositionUm(double& pos)
+{
+	pos = stepsZ_ * stepSizeUm_;
+	return DEVICE_OK;
+}
+
+
+/**
+* Returns position in steps
+*/
+int ZStage::GetPositionSteps(long& steps)
+{
+	steps = stepsZ_;
+	return DEVICE_OK;
+}
+
+
+/**
+* Calls SetRelativeSteps to move the stage and updates the
+*/
+int ZStage::SetRelativePositionUm(double d)
+{
+	long dSteps = nint(d / stepSizeUm_);
+	int ret = SetRelativePositionSteps(dSteps); // Stage starts moving after this step
+
+	if (ret == DEVICE_OK) {
+		stepsZ_ += dSteps;
+		this->OnStagePositionChanged(stepsZ_ * stepSizeUm_);
+	}
+
+	return DEVICE_OK;
+}
+
+/**
+* According to DeviceBase.h, it uses GetPositionSteps() and then SetPositionSteps()
+* Since OpenFlexure has a specific function for setting relative position, I'm actualizing the xy stage device here
+*/
+int ZStage::SetRelativePositionSteps(long z)
+{
+
+	// Concatenate the command and number of steps
+	std::ostringstream cmd;
+	cmd << "mrz " << z;
+
+	// Send command through hub
+	int ret = pHub->SendCommand(cmd.str(), _serial_answer);
+
+	return ret;
+}
+
+
+int ZStage::SetOrigin()
+{
+	// Set current position as origin (all motor positions set to 0)
+	std::string cmd = "zero";
+	int ret = pHub->SendCommand(cmd, _serial_answer);
+
+	return ret;
+}
+
+void ZStage::GetName(char* name) const
+{
+	CDeviceUtils::CopyLimitedString(name, g_ZStageDeviceName);
+}
+
+
+
+///////////////////////////////////////////////////////////////////////////////
+// LED Illumination implementation
+// ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+int LEDIllumination::Initialize()
+{
+	pHub = static_cast<SangaBoardHub*>(GetParentHub());
+	if (pHub)
+	{
+		char hubLabel[MM::MaxStrLength];
+		pHub->GetLabel(hubLabel);
+		SetParentID(hubLabel); // for backward comp.
+	}
+	else
+		LogMessage(NoHubError);
+
+	if (initialized_)
+		return DEVICE_OK;
+
+	// set property list
+	// -----------------
+
+	// Name
+	int ret = CreateStringProperty(MM::g_Keyword_Name, g_ShutterDeviceName, true);
+	if (DEVICE_OK != ret)
+		return ret;
+
+	// Description
+	ret = CreateStringProperty(MM::g_Keyword_Description, "LED Illumination", true);
+	if (DEVICE_OK != ret)
+		return ret;
+
+	changedTime_ = GetCurrentMMTime();
+
+	// state
+	CPropertyAction* pAct = new CPropertyAction(this, &LEDIllumination::OnState);
+	ret = CreateIntegerProperty(MM::g_Keyword_State, 0, false, pAct);
+	if (ret != DEVICE_OK)
+		return ret;
+
+	AddAllowedValue(MM::g_Keyword_State, "0"); // Closed
+	AddAllowedValue(MM::g_Keyword_State, "1"); // Open
+
+	state_ = false;
+
+	ret = UpdateStatus();
+	if (ret != DEVICE_OK)
+		return ret;
+
+	initialized_ = true;
+
+	return DEVICE_OK;
+}
+
+
+/**
+* Turn the LED on via serial command
+*/
+int LEDIllumination::SetOpen(bool open)//bool open = true)
+{
+	state_ = open;
+	changedTime_ = GetCurrentMMTime();
+
+	if (state_ == true) {
+		std::string cmd = "led_cc 1";
+		pHub->SendCommand(cmd, _serial_answer);
+	}
+	else {
+		std::string cmd = "led_cc 0";
+		pHub->SendCommand(cmd, _serial_answer);
+	}
+
+	return DEVICE_OK;
+}
+
+
+int LEDIllumination::GetOpen(bool& open)
+{
+	open = state_;
+	return DEVICE_OK;
+}
+
+
+void LEDIllumination::GetName(char* name) const
+{
+	CDeviceUtils::CopyLimitedString(name, g_ShutterDeviceName);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// Action handlers
+///////////////////////////////////////////////////////////////////////////////
+
+int LEDIllumination::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		if (state_)
+			pProp->Set(1L);
+		else
+			pProp->Set(0L);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		// Set timer for the Busy signal
+		changedTime_ = GetCurrentMMTime();
+
+		long pos;
+		pProp->Get(pos);
+
+		// apply the value
+		state_ = pos == 0 ? false : true;
+		SetOpen(state_);
+	}
+
+	return DEVICE_OK;
+}
