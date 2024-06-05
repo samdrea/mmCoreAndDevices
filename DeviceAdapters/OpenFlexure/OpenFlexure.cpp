@@ -245,6 +245,8 @@ int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 		// Set property
 		SetProperty(g_Keyword_Response, _serial_answer.c_str());
 
+		// TODO: Sync the hub itself
+
 
 		// Sync the xy, z, and LED to possible changes made through serial call
 		for (unsigned i = 0; i < GetNumberOfDevices(); i++) {
@@ -257,9 +259,25 @@ int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 			{
 				XYStage* xyStage = dynamic_cast<XYStage*>(GetDevice(deviceName));
 				xyStage->SyncState();
+				
 			}
 
 			// Sync z stage
+			if (success && (strcmp(g_ZStageDeviceName, deviceName) == 0))
+			{
+				ZStage* zStage = dynamic_cast<ZStage*>(GetDevice(deviceName));
+				zStage->SyncState();
+
+			}
+
+			// Sync illumination
+			if (success && (strcmp(g_ShutterDeviceName, deviceName) == 0))
+			{
+				LEDIllumination* light = dynamic_cast<LEDIllumination*>(GetDevice(deviceName));
+				light->SyncState();
+
+			}
+
 		}
 	}
 
@@ -785,6 +803,14 @@ int LEDIllumination::Initialize()
 
 	state_ = false;
 
+
+	// Brightness property is a slider
+	CPropertyAction* pActbr = new CPropertyAction(this, &LEDIllumination::OnBrightness);
+	CreateProperty(g_Keyword_Brightness, std::to_string(brightness_).c_str(), MM::Float, false, pActbr);
+	SetPropertyLimits(g_Keyword_Brightness, 0, 1.0);
+
+
+
 	ret = UpdateStatus();
 	if (ret != DEVICE_OK)
 		return ret;
@@ -804,8 +830,7 @@ int LEDIllumination::SetOpen(bool open)//bool open = true)
 	changedTime_ = GetCurrentMMTime();
 
 	if (state_ == true) {
-		std::string cmd = "led_cc 1";
-		pHub->SendCommand(cmd, _serial_answer);
+		SetBrightness();
 	}
 	else {
 		std::string cmd = "led_cc 0";
@@ -815,14 +840,18 @@ int LEDIllumination::SetOpen(bool open)//bool open = true)
 	return DEVICE_OK;
 }
 
-
+/**
+* Let MM API know if the LED is on
+*/
 int LEDIllumination::GetOpen(bool& open)
 {
 	open = state_;
 	return DEVICE_OK;
 }
 
-
+/**
+* Get Name of shutter device
+*/
 void LEDIllumination::GetName(char* name) const
 {
 	CDeviceUtils::CopyLimitedString(name, g_ShutterDeviceName);
@@ -832,6 +861,9 @@ void LEDIllumination::GetName(char* name) const
 // Action handlers
 ///////////////////////////////////////////////////////////////////////////////
 
+/**
+* Controls the shutter button 
+*/
 int LEDIllumination::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
@@ -853,6 +885,77 @@ int LEDIllumination::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 		state_ = pos == 0 ? false : true;
 		SetOpen(state_);
 	}
+
+	return DEVICE_OK;
+}
+
+/**
+* Controls the brightness property in hardware property browser
+*/
+int LEDIllumination::OnBrightness(MM::PropertyBase* pProp, MM::ActionType eAct) 
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pProp->Set(brightness_); // set the property display in mm to the brightness variable stored on cache
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		// get value from mm property display and store as brightness variable on cache
+		pProp->Get(brightness_);  
+		
+		if (state_) {
+			// actually send command to set brightness of the LedArray
+			SetBrightness();
+		}
+
+	}
+
+	return DEVICE_OK;
+}
+
+
+///////////////////////////////////////////////////////////////////////////////
+// Action Fucntions
+///////////////////////////////////////////////////////////////////////////////
+
+/**
+* Queries actual hardware for current values to sync the MM cached values
+*/
+int LEDIllumination::SyncState()
+{ 
+	// Query for the brightness of the LED
+	std::string cmd = "led_cc?";
+	pHub->SendCommand(cmd, _serial_answer); // Output is something like CC LED:1.00
+
+	// Find the position of the numeric value in the response
+	size_t colonPos = _serial_answer.find(':');
+	if (colonPos != std::string::npos) {
+		std::string valueStr = _serial_answer.substr(colonPos + 1); // Extract the substring after the colon
+
+		// Convert the extracted substring to a double
+		brightness_ = std::stod(valueStr);
+
+		// Update the state variable
+		if (brightness_ > 0.0) {
+			state_ = true;
+		}
+		else {
+			state_ = false;
+		}
+	}
+	else {
+		// Handle the error: the expected format is not found
+		return DEVICE_ERR;
+	}
+
+	return DEVICE_OK;
+}
+
+int LEDIllumination::SetBrightness()
+{
+	// actually send command to set brightness of the LedArray
+	std::string cmd = "led_cc " + std::to_string(brightness_);
+	pHub->SendCommand(cmd, _serial_answer);
 
 	return DEVICE_OK;
 }

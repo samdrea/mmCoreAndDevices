@@ -28,6 +28,13 @@ const char* g_ShutterDeviceName = "LED illumination";
 
 const char* g_Keyword_Response = "SerialResponse";
 const char* g_Keyword_Command = "SerialCommand";
+const char* g_Keyword_Brightness = "Brightness";
+const char* g_Keyword_StepDelay = "Stage Step Delay";
+const char* g_Keyword_MinStepDelay = "Minimum Step Delay";
+const char* g_Keyword_RampTime = "Ramp Time";
+const char* g_ExtraCommand_Stop = "Stop";
+const char* g_ExtraCommand_Zero = "Zero";
+const char* g_ExtraCommand_Release = "Release";
 const char* NoHubError = "Parent Hub not defined.";
 
 // Custom Error texts
@@ -55,6 +62,10 @@ public:
 	// Action Interface
 	int OnPort(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	int OnManualCommand(MM::PropertyBase* pPropt, MM::ActionType eAct);
+	int OnStepDelay(MM::PropertyBase* pPropt, MM::ActionType eAct);
+	int OnMinStepDelay(MM::PropertyBase* pPropt, MM::ActionType eAct);
+	int OnRampTime(MM::PropertyBase* pPropt, MM::ActionType eAct);
+	int OnExtraFunctions(MM::PropertyBase* pPropt, MM::ActionType eAct);
 
 	// Helper Functions
 	void GetPort(std::string& port);
@@ -183,7 +194,7 @@ private:
 class LEDIllumination : public CShutterBase<LEDIllumination>
 {
 public:
-	LEDIllumination() : state_(false), initialized_(false), changedTime_(0.0)
+	LEDIllumination() : state_(false), initialized_(false), changedTime_(0.0), brightness_(1.0)
 	{
 		EnableDelay(); // signals that the delay setting will be used
 		// parent ID display
@@ -204,10 +215,16 @@ public:
 
 	// action interface
 	int OnState(MM::PropertyBase* pProp, MM::ActionType eAct);
+	int OnBrightness(MM::PropertyBase* pPropt, MM::ActionType eAct);
+
+	// Action functions
+	int SyncState();
+	int SetBrightness();
 
 private:
 	bool state_;
 	bool initialized_;
+	double brightness_;
 	MM::MMTime changedTime_;
 	std::string _serial_answer;
 	SangaBoardHub* pHub;
