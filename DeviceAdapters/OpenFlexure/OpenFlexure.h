@@ -7,7 +7,7 @@
 //
 // COPYRIGHT:     Samdrea Hsu
 //
-// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.edu, 02/28/2024
+// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.edu, 06/13/2024
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -28,13 +28,12 @@ const char* g_ShutterDeviceName = "LED illumination";
 
 const char* g_Keyword_Response = "SerialResponse";
 const char* g_Keyword_Command = "SerialCommand";
-const char* g_Keyword_Brightness = "Brightness";
-const char* g_Keyword_StepDelay = "Stage Step Delay";
-const char* g_Keyword_MinStepDelay = "Minimum Step Delay";
-const char* g_Keyword_RampTime = "Ramp Time";
-const char* g_ExtraCommand_Stop = "Stop";
-const char* g_ExtraCommand_Zero = "Zero";
-const char* g_ExtraCommand_Release = "Release";
+const char* g_Keyword_Brightness = "LED Brightness";
+const char* g_Keyword_StepDelay = "Stage Step Delay (us)";
+const char* g_Keyword_RampTime = "Stage Ramp Time (us)";
+const char* g_ExtraCommand_Stop = "Stage Stop";
+const char* g_ExtraCommand_Zero = "Stage Zero";
+const char* g_ExtraCommand_Release = "Stage Release";
 const char* NoHubError = "Parent Hub not defined.";
 
 // Custom Error texts
@@ -63,14 +62,14 @@ public:
 	int OnPort(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	int OnManualCommand(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	int OnStepDelay(MM::PropertyBase* pPropt, MM::ActionType eAct);
-	int OnMinStepDelay(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	int OnRampTime(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	int OnExtraFunctions(MM::PropertyBase* pPropt, MM::ActionType eAct);
 
 	// Helper Functions
 	void GetPort(std::string& port);
 	int SendCommand(std::string cmd, std::string& res);
-
+	int SyncState();
+	long ExtractNumber(std::string serial_output);
 
 private:
 	//void GetPeripheralInventory();
@@ -78,6 +77,8 @@ private:
 	bool initialized_;
 	bool busy_;
 	bool portAvailable_;
+	long step_delay_;
+	long ramp_time_;
 	std::string port_;
 	std::string _command;
 	std::string _serial_answer;

@@ -7,7 +7,7 @@
 //
 // COPYRIGHT:     Samdrea Hsu
 //
-// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.edu, 02/28/2024
+// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.edu, 06/13/2024
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -104,14 +104,39 @@ int SangaBoardHub::Initialize()
 	initialized_ = true;
 
 
-	// Manual Command Interface
+	// Set up Manual Command Interface
 	CPropertyAction* pCommand = new CPropertyAction(this, &SangaBoardHub::OnManualCommand);
 	int ret = CreateProperty(g_Keyword_Command, "", MM::String, false, pCommand);
 	assert(DEVICE_OK == ret);
 
-	// Most Recent Serial Response
+	// Set up property to display most recent serial response (read-only)
 	ret = CreateProperty(g_Keyword_Response, "", MM::String, false);
 	assert(DEVICE_OK == ret);
+
+	// Initialize the cache values to the current values stored on hardware
+	this->SyncState();
+
+	// Set up Step Delay property for changing velocity
+	CPropertyAction* pStepDel = new CPropertyAction(this, &SangaBoardHub::OnStepDelay);
+	ret = CreateIntegerProperty(g_Keyword_StepDelay, step_delay_, false, pStepDel);
+	assert(DEVICE_OK == ret);
+	AddAllowedValue(g_Keyword_StepDelay, "1000", 1000); 
+	AddAllowedValue(g_Keyword_StepDelay, "2000", 2000);
+	//AddAllowedValue(g_Keyword_StepDelay, "3000");
+	//AddAllowedValue(g_Keyword_StepDelay, "4000");
+	//AddAllowedValue(g_Keyword_StepDelay, "5000");
+
+	// Set up Ramp Time property for changing acceleration
+	CPropertyAction* pRampTime = new CPropertyAction(this, &SangaBoardHub::OnRampTime);
+	ret = CreateIntegerProperty(g_Keyword_RampTime, ramp_time_, false, pRampTime);
+	assert(DEVICE_OK == ret);
+	AddAllowedValue(g_Keyword_RampTime, "100000", 100000); // Not really sure if these values really do much for acceleration...
+	AddAllowedValue(g_Keyword_RampTime, "200000", 200000);
+	//AddAllowedValue(g_Keyword_RampTime, "300000");
+	//AddAllowedValue(g_Keyword_RampTime, "400000");
+	//AddAllowedValue(g_Keyword_RampTime, "500000");
+
+
 
 	return DEVICE_OK;
 
@@ -141,7 +166,6 @@ int SangaBoardHub::Shutdown()
 */
 int SangaBoardHub::DetectInstalledDevices()
 {
-
 	ClearInstalledDevices();
 
 	// make sure this method is called before we look for available devices
@@ -159,9 +183,6 @@ int SangaBoardHub::DetectInstalledDevices()
 			AddInstalledDevice(pDev);
 		}
 	}
-
-
-
 	return DEVICE_OK;
 }
 
@@ -227,9 +248,6 @@ int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 	if (pAct == MM::BeforeGet)
 	{
 		pProp->Set(_command.c_str());
-
-		// Sync the position
-		//SyncState();
 	}
 	else if (pAct == MM::AfterSet)
 	{
@@ -245,10 +263,10 @@ int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 		// Set property
 		SetProperty(g_Keyword_Response, _serial_answer.c_str());
 
-		// TODO: Sync the hub itself
+		// Sync the hub itself
+		this->SyncState();
 
-
-		// Sync the xy, z, and LED to possible changes made through serial call
+		// Sync the peripherals xy, z, and LED to possible changes made through serial call
 		for (unsigned i = 0; i < GetNumberOfDevices(); i++) {
 
 			char deviceName[MM::MaxStrLength];
@@ -288,16 +306,49 @@ int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 		return DEVICE_ERR;
 	else
 		return DEVICE_OK;
+}
 
+int SangaBoardHub::OnStepDelay(MM::PropertyBase* pPropt, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pPropt->Set(step_delay_);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		pPropt->Get(step_delay_);
+		std::string cmd = "dt " + std::to_string(step_delay_);
+		this->SendCommand(cmd, _serial_answer);
+	}
+
+	return DEVICE_OK;
+}
+
+int SangaBoardHub::OnRampTime(MM::PropertyBase* pPropt, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pPropt->Set(ramp_time_);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		pPropt->Get(ramp_time_);
+		std::string cmd = "ramp_time " + std::to_string(ramp_time_);
+		this->SendCommand(cmd, _serial_answer);
+	}
+
+	return DEVICE_OK;
 
 }
 
 /////// Helper Functions
 
+/**
+* Return port name
+*/
 void SangaBoardHub::GetPort(std::string& port)
 {
 	port = this->port_;
-
 }
 
 /**
@@ -331,6 +382,46 @@ int SangaBoardHub::SendCommand(std::string cmd, std::string& ans)
 
 } // End of function automatically unlocks the lock
 
+
+/**
+* Prompt device to validate MM cached values 
+*/
+int SangaBoardHub::SyncState()
+{
+	// Update minimum step delay
+	// Query for the brightness of the LED
+	std::string cmd = "dt?";
+	this->SendCommand(cmd, _serial_answer); // Output is something like "minimum step delay 1000"
+
+	// Get the step delay from response 
+	step_delay_ = ExtractNumber(_serial_answer);
+
+	// Update ramp time
+	// Query for the brightness of the LED
+	cmd = "ramp_time?";
+	this->SendCommand(cmd, _serial_answer); // Output is something like "ramp_time 0”
+
+	// Get the ramp time from response
+	ramp_time_ = ExtractNumber(_serial_answer);
+
+	return DEVICE_OK;
+
+}
+
+long SangaBoardHub::ExtractNumber(std::string str) {
+	std::stringstream ss(str);
+	std::string temp;
+	long found;
+
+	// Running loop till the end of the stream
+	while (ss >> temp) {
+		// Checking if the given word is a long or not
+		if (std::stringstream(temp) >> found) {
+			return found; // Return the first long found
+		}
+	}
+	return 0; // Return 0 if no long is found
+}
 
 
 
@@ -777,6 +868,9 @@ int LEDIllumination::Initialize()
 	if (initialized_)
 		return DEVICE_OK;
 
+	// Sync current device values to cached values
+	SyncState();
+
 	// set property list
 	// -----------------
 
@@ -794,14 +888,12 @@ int LEDIllumination::Initialize()
 
 	// state
 	CPropertyAction* pAct = new CPropertyAction(this, &LEDIllumination::OnState);
-	ret = CreateIntegerProperty(MM::g_Keyword_State, 0, false, pAct);
+	ret = CreateIntegerProperty(MM::g_Keyword_State, state_, false, pAct);
 	if (ret != DEVICE_OK)
 		return ret;
 
 	AddAllowedValue(MM::g_Keyword_State, "0"); // Closed
 	AddAllowedValue(MM::g_Keyword_State, "1"); // Open
-
-	state_ = false;
 
 
 	// Brightness property is a slider
