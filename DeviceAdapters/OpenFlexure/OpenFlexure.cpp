@@ -136,6 +136,17 @@ int SangaBoardHub::Initialize()
 	//AddAllowedValue(g_Keyword_RampTime, "400000");
 	//AddAllowedValue(g_Keyword_RampTime, "500000");
 
+	// Set up extra functions drop down menu
+	CPropertyAction* pExtras= new CPropertyAction(this, &SangaBoardHub::OnExtraCommands);
+	ret = CreateStringProperty(g_Keyword_Extras, g_Keyword_None, false, pExtras);
+	assert(DEVICE_OK == ret);
+	//AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Stop);
+	AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Zero);
+	//AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Release);
+	//AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Version);
+	//AddAllowedValue(g_Keyword_Extras, g_Keyword_None);
+
+
 
 
 	return DEVICE_OK;
@@ -260,43 +271,17 @@ int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 		// Send command
 		SendCommand(_command, _serial_answer);
 
-		// Set property
-		SetProperty(g_Keyword_Response, _serial_answer.c_str());
+		// Remember the response
+		std::string ans = _serial_answer;
 
 		// Sync the hub itself
 		this->SyncState();
 
 		// Sync the peripherals xy, z, and LED to possible changes made through serial call
-		for (unsigned i = 0; i < GetNumberOfDevices(); i++) {
+		this->SyncPeripherals();
 
-			char deviceName[MM::MaxStrLength];
-			bool success = GetDeviceName(i, deviceName, MM::MaxStrLength);
-
-			// Sync xy stage
-			if (success && (strcmp(g_XYStageDeviceName, deviceName) == 0))
-			{
-				XYStage* xyStage = dynamic_cast<XYStage*>(GetDevice(deviceName));
-				xyStage->SyncState();
-				
-			}
-
-			// Sync z stage
-			if (success && (strcmp(g_ZStageDeviceName, deviceName) == 0))
-			{
-				ZStage* zStage = dynamic_cast<ZStage*>(GetDevice(deviceName));
-				zStage->SyncState();
-
-			}
-
-			// Sync illumination
-			if (success && (strcmp(g_ShutterDeviceName, deviceName) == 0))
-			{
-				LEDIllumination* light = dynamic_cast<LEDIllumination*>(GetDevice(deviceName));
-				light->SyncState();
-
-			}
-
-		}
+		// Display the response to the command
+		SetProperty(g_Keyword_Response, ans.c_str());
 	}
 
 	// Return
@@ -341,6 +326,37 @@ int SangaBoardHub::OnRampTime(MM::PropertyBase* pPropt, MM::ActionType eAct)
 
 }
 
+/*
+* Sets the before and after actions for the extra commands property
+* Makes sure stage is synched after set
+*/
+int SangaBoardHub::OnExtraCommands(MM::PropertyBase* pPropt, MM::ActionType eAct)
+{
+	if (eAct == MM::BeforeGet)
+	{
+		pPropt->Set(g_Keyword_None);
+	}
+	else if (eAct == MM::AfterSet)
+	{
+		std::string cmd;
+		pPropt->Get(cmd);
+		this->SendCommand(cmd, _serial_answer);
+		
+		// Remember the response
+		std::string ans = _serial_answer;
+
+		// Sync the stages, because the extra commands mostly change the state of the stage
+		this->SyncPeripherals();
+
+		// Display the response to the command
+		SetProperty(g_Keyword_Response, ans.c_str());
+	}
+
+	return DEVICE_OK;
+}
+
+
+
 /////// Helper Functions
 
 /**
@@ -378,18 +394,20 @@ int SangaBoardHub::SendCommand(std::string cmd, std::string& ans)
 		return ret;
 	}
 
+	// Reflect the command in the serial response property
+	SetProperty(g_Keyword_Response, ans.c_str());
+
 	return DEVICE_OK;
 
 } // End of function automatically unlocks the lock
 
 
 /**
-* Prompt device to validate MM cached values 
+* Prompt device to validate MM cached values for the hub 
 */
 int SangaBoardHub::SyncState()
 {
 	// Update minimum step delay
-	// Query for the brightness of the LED
 	std::string cmd = "dt?";
 	this->SendCommand(cmd, _serial_answer); // Output is something like "minimum step delay 1000"
 
@@ -397,7 +415,6 @@ int SangaBoardHub::SyncState()
 	step_delay_ = ExtractNumber(_serial_answer);
 
 	// Update ramp time
-	// Query for the brightness of the LED
 	cmd = "ramp_time?";
 	this->SendCommand(cmd, _serial_answer); // Output is something like "ramp_time 0”
 
@@ -407,6 +424,48 @@ int SangaBoardHub::SyncState()
 	return DEVICE_OK;
 
 }
+
+/**
+* Sync the peripherals if they exist
+*/
+int SangaBoardHub::SyncPeripherals()
+{
+		// Look for peripherals that need syncing
+		for (unsigned i = 0; i < GetNumberOfDevices(); i++) {
+
+			char deviceName[MM::MaxStrLength];
+			bool success = GetDeviceName(i, deviceName, MM::MaxStrLength);
+
+			// Sync xy stage
+			if (success && (strcmp(g_XYStageDeviceName, deviceName) == 0))
+			{
+				XYStage* xyStage = dynamic_cast<XYStage*>(GetDevice(deviceName));
+				xyStage->SyncState();
+				
+			}
+
+			// Sync z stage
+			if (success && (strcmp(g_ZStageDeviceName, deviceName) == 0))
+			{
+				ZStage* zStage = dynamic_cast<ZStage*>(GetDevice(deviceName));
+				zStage->SyncState();
+
+			}
+
+			// Sync illumination
+			if (success && (strcmp(g_ShutterDeviceName, deviceName) == 0))
+			{
+				LEDIllumination* light = dynamic_cast<LEDIllumination*>(GetDevice(deviceName));
+				light->SyncState();
+
+			}
+
+		}
+
+		return DEVICE_OK;
+}
+
+
 
 long SangaBoardHub::ExtractNumber(std::string str) {
 	std::stringstream ss(str);
@@ -432,7 +491,7 @@ long SangaBoardHub::ExtractNumber(std::string str) {
 /*
 * Constructor, called when device is selected
 */
-XYStage::XYStage() : initialized_(false), portAvailable_(false), stepSizeUm_(0.07), stepsX_(0), stepsY_(0)
+XYStage::XYStage() : initialized_(false), portAvailable_(false), stepSizeUm_(0.07), stepsX_(0), stepsY_(0), pHub(NULL)
 {
 	// Parent ID display
 	//CreateHubIDProperty();
@@ -692,7 +751,7 @@ int XYStage::Shutdown()
 /*
 * Constructor
 */
-ZStage::ZStage() : initialized_(false), stepSizeUm_(0.05)
+ZStage::ZStage() : initialized_(false), stepSizeUm_(0.05), stepsZ_(0), pHub(NULL)
 {
 
 	// Parent ID display
@@ -853,6 +912,12 @@ void ZStage::GetName(char* name) const
 // LED Illumination implementation
 // ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+// Destructor
+LEDIllumination::~LEDIllumination()
+{
+	Shutdown();
+}
+
 int LEDIllumination::Initialize()
 {
 	pHub = static_cast<SangaBoardHub*>(GetParentHub());
@@ -912,6 +977,12 @@ int LEDIllumination::Initialize()
 	return DEVICE_OK;
 }
 
+int LEDIllumination::Shutdown()
+{ 
+	initialized_ = false; 
+	state_ = false;
+	return DEVICE_OK; 
+}
 
 /**
 * Turn the LED on via serial command
@@ -1014,7 +1085,11 @@ int LEDIllumination::OnBrightness(MM::PropertyBase* pProp, MM::ActionType eAct)
 * Queries actual hardware for current values to sync the MM cached values
 */
 int LEDIllumination::SyncState()
-{ 
+{
+	if (!initialized_) {
+		return DEVICE_OK; // Keep device at default brightness
+	}
+
 	// Query for the brightness of the LED
 	std::string cmd = "led_cc?";
 	pHub->SendCommand(cmd, _serial_answer); // Output is something like CC LED:1.00

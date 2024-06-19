@@ -31,9 +31,12 @@ const char* g_Keyword_Command = "SerialCommand";
 const char* g_Keyword_Brightness = "LED Brightness";
 const char* g_Keyword_StepDelay = "Stage Step Delay (us)";
 const char* g_Keyword_RampTime = "Stage Ramp Time (us)";
-const char* g_ExtraCommand_Stop = "Stage Stop";
-const char* g_ExtraCommand_Zero = "Stage Zero";
-const char* g_ExtraCommand_Release = "Stage Release";
+const char* g_Keyword_Extras = "Extra Stage Commands";
+const char* g_Keyword_None = "None";
+const char* g_ExtraCommand_Stop = "stop";
+const char* g_ExtraCommand_Zero = "zero";
+const char* g_ExtraCommand_Release = "release";
+const char* g_ExtraCommand_Version = "version";
 const char* NoHubError = "Parent Hub not defined.";
 
 // Custom Error texts
@@ -63,13 +66,14 @@ public:
 	int OnManualCommand(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	int OnStepDelay(MM::PropertyBase* pPropt, MM::ActionType eAct);
 	int OnRampTime(MM::PropertyBase* pPropt, MM::ActionType eAct);
-	int OnExtraFunctions(MM::PropertyBase* pPropt, MM::ActionType eAct);
+	int OnExtraCommands(MM::PropertyBase* pPropt, MM::ActionType eAct);
 
 	// Helper Functions
 	void GetPort(std::string& port);
 	int SendCommand(std::string cmd, std::string& res);
 	int SyncState();
 	long ExtractNumber(std::string serial_output);
+	int SyncPeripherals();
 
 private:
 	//void GetPeripheralInventory();
@@ -195,16 +199,11 @@ private:
 class LEDIllumination : public CShutterBase<LEDIllumination>
 {
 public:
-	LEDIllumination() : state_(false), initialized_(false), changedTime_(0.0), brightness_(1.0)
-	{
-		EnableDelay(); // signals that the delay setting will be used
-		// parent ID display
-		CreateHubIDProperty();
-	}
-	~LEDIllumination() {}
+	LEDIllumination() : state_(false), initialized_(false), changedTime_(0.0), brightness_(1.0), pHub(NULL){}
+	~LEDIllumination();
 
 	int Initialize();
-	int Shutdown() { initialized_ = false; return DEVICE_OK; }
+	int Shutdown();
 	void GetName(char* name) const;
 
 
