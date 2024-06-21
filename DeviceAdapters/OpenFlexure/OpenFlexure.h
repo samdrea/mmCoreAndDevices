@@ -133,6 +133,8 @@ public:
 	// Action functions
 	int SyncState();
 
+	// Helper function
+
 
 private:
 
@@ -165,7 +167,7 @@ public:
 	// MMDevice API
 	// ------------
 	int Initialize();
-	int Shutdown() { initialized_ = false; return DEVICE_OK; }
+	int Shutdown();
 	void GetName(char* name) const;
 
 	// ZStage API

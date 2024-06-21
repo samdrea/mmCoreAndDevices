@@ -120,37 +120,32 @@ int SangaBoardHub::Initialize()
 	CPropertyAction* pStepDel = new CPropertyAction(this, &SangaBoardHub::OnStepDelay);
 	ret = CreateIntegerProperty(g_Keyword_StepDelay, step_delay_, false, pStepDel);
 	assert(DEVICE_OK == ret);
-	AddAllowedValue(g_Keyword_StepDelay, "1000", 1000); 
-	AddAllowedValue(g_Keyword_StepDelay, "2000", 2000);
-	//AddAllowedValue(g_Keyword_StepDelay, "3000");
-	//AddAllowedValue(g_Keyword_StepDelay, "4000");
-	//AddAllowedValue(g_Keyword_StepDelay, "5000");
+	AddAllowedValue(g_Keyword_StepDelay, "1000"); 
+	AddAllowedValue(g_Keyword_StepDelay, "2000");
+	AddAllowedValue(g_Keyword_StepDelay, "3000");
+	AddAllowedValue(g_Keyword_StepDelay, "4000");
+	AddAllowedValue(g_Keyword_StepDelay, "5000");
 
 	// Set up Ramp Time property for changing acceleration
 	CPropertyAction* pRampTime = new CPropertyAction(this, &SangaBoardHub::OnRampTime);
 	ret = CreateIntegerProperty(g_Keyword_RampTime, ramp_time_, false, pRampTime);
 	assert(DEVICE_OK == ret);
-	AddAllowedValue(g_Keyword_RampTime, "100000", 100000); // Not really sure if these values really do much for acceleration...
-	AddAllowedValue(g_Keyword_RampTime, "200000", 200000);
-	//AddAllowedValue(g_Keyword_RampTime, "300000");
-	//AddAllowedValue(g_Keyword_RampTime, "400000");
-	//AddAllowedValue(g_Keyword_RampTime, "500000");
+	AddAllowedValue(g_Keyword_RampTime, "0", 0);
+	AddAllowedValue(g_Keyword_RampTime, "100000"); // Not really sure if these values really do much for acceleration...
+	AddAllowedValue(g_Keyword_RampTime, "200000");
+	AddAllowedValue(g_Keyword_RampTime, "300000");
 
 	// Set up extra functions drop down menu
 	CPropertyAction* pExtras= new CPropertyAction(this, &SangaBoardHub::OnExtraCommands);
 	ret = CreateStringProperty(g_Keyword_Extras, g_Keyword_None, false, pExtras);
 	assert(DEVICE_OK == ret);
-	//AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Stop);
+	AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Stop);
 	AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Zero);
-	//AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Release);
-	//AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Version);
-	//AddAllowedValue(g_Keyword_Extras, g_Keyword_None);
-
-
+	AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Release);
+	AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Version);
 
 
 	return DEVICE_OK;
-
 }
 
 /*
@@ -563,6 +558,17 @@ int XYStage::Initialize()
 	return DEVICE_OK; 
 }
 
+/*
+* Shutdown the OpenFlexure
+*/
+int XYStage::Shutdown()
+{
+	std::string cmd = "release";
+	pHub->SendCommand(cmd, _serial_answer);
+	initialized_ = false;
+	return DEVICE_OK;
+}
+
 /**
 * Sync the starting position of the stage to the cached values in the adapter
 */
@@ -683,20 +689,21 @@ int XYStage::SetOrigin()
 
 
 /**
-* Could be the function to sync adapter to the stage's actual positions... if fails, I'll implement a sync() myself
+* Could be the function to sync adapter to the stage's actual positions...
 */
 int XYStage::SetAdapterOrigin()
 {
 	return DEVICE_OK;
 }
 
-
+/**
+* Return the device to the origin 
+*/
 int XYStage::Home()
 {
 	//TODO: Query the position steps and set the number of steps to opposite that
 	return DEVICE_OK;
 }
-
 
 int XYStage::Stop()
 {
@@ -732,15 +739,6 @@ int XYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax)
 void XYStage::GetName(char* name) const
 {
 	CDeviceUtils::CopyLimitedString(name, g_XYStageDeviceName);
-}
-
-/*
-* Shutdown the OpenFlexure
-*/
-int XYStage::Shutdown()
-{
-	initialized_ = false;
-	return DEVICE_OK;
 }
 
 
@@ -814,6 +812,19 @@ int ZStage::Initialize()
 
 	return DEVICE_OK;
 }
+
+/**
+* Shutdown the device
+* De-energize the motor
+*/
+int ZStage::Shutdown()
+{ 
+	std::string cmd = "release";
+	pHub->SendCommand(cmd, _serial_answer);
+	initialized_ = false; 
+	return DEVICE_OK; 
+}
+
 /**
 * Sync the starting position of the stage to the cached values in the adapter
 */
@@ -939,21 +950,11 @@ int LEDIllumination::Initialize()
 	// set property list
 	// -----------------
 
-	// Name
-	int ret = CreateStringProperty(MM::g_Keyword_Name, g_ShutterDeviceName, true);
-	if (DEVICE_OK != ret)
-		return ret;
-
-	// Description
-	ret = CreateStringProperty(MM::g_Keyword_Description, "LED Illumination", true);
-	if (DEVICE_OK != ret)
-		return ret;
-
 	changedTime_ = GetCurrentMMTime();
 
 	// state
 	CPropertyAction* pAct = new CPropertyAction(this, &LEDIllumination::OnState);
-	ret = CreateIntegerProperty(MM::g_Keyword_State, state_, false, pAct);
+	int ret = CreateIntegerProperty(MM::g_Keyword_State, state_, false, pAct);
 	if (ret != DEVICE_OK)
 		return ret;
 
@@ -980,7 +981,7 @@ int LEDIllumination::Initialize()
 int LEDIllumination::Shutdown()
 { 
 	initialized_ = false; 
-	state_ = false;
+	SetOpen(false);
 	return DEVICE_OK; 
 }
 
@@ -1094,26 +1095,8 @@ int LEDIllumination::SyncState()
 	std::string cmd = "led_cc?";
 	pHub->SendCommand(cmd, _serial_answer); // Output is something like CC LED:1.00
 
-	// Find the position of the numeric value in the response
-	size_t colonPos = _serial_answer.find(':');
-	if (colonPos != std::string::npos) {
-		std::string valueStr = _serial_answer.substr(colonPos + 1); // Extract the substring after the colon
-
-		// Convert the extracted substring to a double
-		brightness_ = std::stod(valueStr);
-
-		// Update the state variable
-		if (brightness_ > 0.0) {
-			state_ = true;
-		}
-		else {
-			state_ = false;
-		}
-	}
-	else {
-		// Handle the error: the expected format is not found
-		return DEVICE_ERR;
-	}
+	// Find the brightness floating point number
+	brightness_ = pHub->ExtractNumber(_serial_answer);
 
 	return DEVICE_OK;
 }
