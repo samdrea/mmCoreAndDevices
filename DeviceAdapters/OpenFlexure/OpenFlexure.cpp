@@ -7,7 +7,7 @@
 //
 // COPYRIGHT:     Samdrea Hsu
 //
-// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.edu, 06/13/2024
+// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.edu, 06/20/2024
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -1093,10 +1093,30 @@ int LEDIllumination::SyncState()
 
 	// Query for the brightness of the LED
 	std::string cmd = "led_cc?";
-	pHub->SendCommand(cmd, _serial_answer); // Output is something like CC LED:1.00
+	pHub->SendCommand(cmd, _serial_answer); // Output is something like CC LED:1.00, so i can't use hub's ExtractNumber()
 
-	// Find the brightness floating point number
-	brightness_ = pHub->ExtractNumber(_serial_answer);
+	// Find the position of the numeric value in the response
+	size_t colonPos = _serial_answer.find(':');
+	if (colonPos != std::string::npos) {
+		std::string valueStr = _serial_answer.substr(colonPos + 1); // Extract the substring after the colon
+		
+		double LEDVal = std::stod(valueStr);
+
+		// If only sync if light was manually turned on to a certain brightness
+		if (LEDVal != 0.0) {
+			state_ = true;
+			brightness_ = LEDVal;
+		}
+		else {
+			state_ = false;
+			// Note: brightness_ is not updated when LEDVal is 0.0, so it retains its last value.
+		}
+	}
+	else {
+		// Handle the error: the expected format is not found
+		return DEVICE_ERR;
+	}
+	//brightness_ = pHub->ExtractNumber(_serial_answer);
 
 	return DEVICE_OK;
 }
