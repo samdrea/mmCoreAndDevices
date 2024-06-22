@@ -7,7 +7,7 @@
 //
 // COPYRIGHT:     Samdrea Hsu
 //
-// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.edu, 06/20/2024
+// AUTHOR:        Samdrea Hsu, samdreahsu@gmail.com, 06/22/2024
 //
 //////////////////////////////////////////////////////////////////////////////
 
@@ -34,7 +34,6 @@ MODULE_API void InitializeModuleData()
 	RegisterDevice(g_HubDeviceName, MM::HubDevice, "Sangaboard Hub");
 	RegisterDevice(g_ZStageDeviceName, MM::StageDevice, "Z Stage");
 	RegisterDevice(g_ShutterDeviceName, MM::ShutterDevice, "LED Illumination");
-
 }
 
 MODULE_API MM::Device* CreateDevice(const char* deviceName)
@@ -43,24 +42,15 @@ MODULE_API MM::Device* CreateDevice(const char* deviceName)
 		return 0;
 
 	if (strcmp(deviceName, g_XYStageDeviceName) == 0)
-	{
-		return new XYStage; // Create xy stage
-	}
+		return new XYStage; // Create XY stage
 	else if (strcmp(deviceName, g_HubDeviceName) == 0)
-	{
 		return new SangaBoardHub; // Create hub
-	}
 	else if (strcmp(deviceName, g_ZStageDeviceName) == 0)
-	{
 		return new ZStage; // Create Z stage
-	}
 	else if (strcmp(deviceName, g_ShutterDeviceName) == 0)
-	{
 		return new LEDIllumination; // Create LED shutter device
-	}
 
 	return 0; // Device name not recognized
-
 }
 
 MODULE_API void DeleteDevice(MM::Device* pDevice)
@@ -70,11 +60,8 @@ MODULE_API void DeleteDevice(MM::Device* pDevice)
 
 ///////////////////////////////////////////////////////////////////////////////
 // Sangaboard hub implementation
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+///////////////////////////////////////////////////////////////////////////////
 
-/*
-* Constructor
-*/
 SangaBoardHub::SangaBoardHub() : initialized_(false), port_("Undefined"), portAvailable_(false), busy_(false)
 {
 	// Initialize default error messages
@@ -86,25 +73,18 @@ SangaBoardHub::SangaBoardHub() : initialized_(false), port_("Undefined"), portAv
 	// Pre-initialization property: port name
 	CPropertyAction* pAct = new CPropertyAction(this, &SangaBoardHub::OnPort);
 	CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
-
 }
 
-/*
-* Destructor
-*/
 SangaBoardHub::~SangaBoardHub()
 {
 	Shutdown();
 }
 
-
-
 int SangaBoardHub::Initialize()
 {
 	initialized_ = true;
 
-
-	// Set up Manual Command Interface
+	// Set up Manual Command Interface to send command directly to SangaBoard
 	CPropertyAction* pCommand = new CPropertyAction(this, &SangaBoardHub::OnManualCommand);
 	int ret = CreateProperty(g_Keyword_Command, "", MM::String, false, pCommand);
 	assert(DEVICE_OK == ret);
@@ -144,38 +124,18 @@ int SangaBoardHub::Initialize()
 	AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Release);
 	AddAllowedValue(g_Keyword_Extras, g_ExtraCommand_Version);
 
-
 	return DEVICE_OK;
 }
 
-/*
-* Shutdown the hub
-*/
 int SangaBoardHub::Shutdown()
 {
 	initialized_ = false;
 	return DEVICE_OK;
 }
 
-/** Comment from MMDevice.h
-* 
-* Instantiate all available child peripheral devices.
-*
-* The implementation must instantiate all available child devices and
-* register them by calling AddInstalledDevice() (currently in HubBase).
-*
-* Instantiated peripherals are owned by the Core, and will be destroyed
-* by calling the usual ModuleInterface DeleteDevice() function.
-*
-* The result of calling this function more than once for a given hub
-* instance is undefined.
-*/
 int SangaBoardHub::DetectInstalledDevices()
 {
 	ClearInstalledDevices();
-
-	// make sure this method is called before we look for available devices
-	//InitializeModuleData();
 
 	char hubName[MM::MaxStrLength];
 	GetName(hubName); // this device name
@@ -192,7 +152,6 @@ int SangaBoardHub::DetectInstalledDevices()
 	return DEVICE_OK;
 }
 
-
 void SangaBoardHub::GetName(char* name) const
 {
 	CDeviceUtils::CopyLimitedString(name, g_HubDeviceName);
@@ -203,10 +162,8 @@ void SangaBoardHub::GetName(char* name) const
 */
 bool SangaBoardHub::Busy()
 {
-
 	//MM::MMTime timeout(0, 500000); // wait for 0.5 sec
 
-	// Purge COM Port
 	PurgeComPort(port_.c_str());
 
 	// Send a query to check if stage is moving
@@ -215,22 +172,13 @@ bool SangaBoardHub::Busy()
 	// Check response
 	GetSerialAnswer(port_.c_str(), "\r", _serial_answer); // Should return "\ntrue" or "\nfalse"
 
-	if (_serial_answer.find("true") != -1) { // find() will return index of substring
-		return true;
-	}
-	else { //if (_serial_answer.find("false") == -1) { // what if serial answer is neither true or false
-		return false;
-	}
+	return _serial_answer.find("true") != std::string::npos;
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// SangaboardHub Action handlers
+///////////////////////////////////////////////////////////////////////////////
 
-///////////////////////////////////////////////////////////////////////////////
-// Action handlers
-///////////////////////////////////////////////////////////////////////////////
-/*
- * Sets the Serial Port to be used.
- * Should be called before initialization
- */
 int SangaBoardHub::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
@@ -246,9 +194,6 @@ int SangaBoardHub::OnPort(MM::PropertyBase* pProp, MM::ActionType eAct)
 	return DEVICE_OK;
 }
 
-/*
-Send a command directly to the stage through property browser
-*/
 int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 {
 	if (pAct == MM::BeforeGet)
@@ -257,13 +202,9 @@ int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 	}
 	else if (pAct == MM::AfterSet)
 	{
-		// Get command string
+		// Get and send the command typed into property
 		pProp->Get(_command);
-		
-		// Purge COM Port
 		PurgeComPort(port_.c_str());
-
-		// Send command
 		SendCommand(_command, _serial_answer);
 
 		// Remember the response
@@ -279,13 +220,8 @@ int SangaBoardHub::OnManualCommand(MM::PropertyBase* pProp, MM::ActionType pAct)
 		SetProperty(g_Keyword_Response, ans.c_str());
 	}
 
-	// Return
 	// Search for error
-	std::string error_flag("ERROR");
-	if (_serial_answer.find(error_flag) != std::string::npos)
-		return DEVICE_ERR;
-	else
-		return DEVICE_OK;
+	return _serial_answer.find("ERROR") != std::string::npos ? DEVICE_ERR : DEVICE_OK;
 }
 
 int SangaBoardHub::OnStepDelay(MM::PropertyBase* pPropt, MM::ActionType eAct)
@@ -321,10 +257,6 @@ int SangaBoardHub::OnRampTime(MM::PropertyBase* pPropt, MM::ActionType eAct)
 
 }
 
-/*
-* Sets the before and after actions for the extra commands property
-* Makes sure stage is synched after set
-*/
 int SangaBoardHub::OnExtraCommands(MM::PropertyBase* pPropt, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
@@ -350,10 +282,9 @@ int SangaBoardHub::OnExtraCommands(MM::PropertyBase* pPropt, MM::ActionType eAct
 	return DEVICE_OK;
 }
 
-
-
-/////// Helper Functions
-
+///////////////////////////////////////////////////////////////////////////////
+// SangaboardHub Helper Functions
+///////////////////////////////////////////////////////////////////////////////
 /**
 * Return port name
 */
@@ -396,7 +327,6 @@ int SangaBoardHub::SendCommand(std::string cmd, std::string& ans)
 
 } // End of function automatically unlocks the lock
 
-
 /**
 * Prompt device to validate MM cached values for the hub 
 */
@@ -417,7 +347,6 @@ int SangaBoardHub::SyncState()
 	ramp_time_ = ExtractNumber(_serial_answer);
 
 	return DEVICE_OK;
-
 }
 
 /**
@@ -435,8 +364,7 @@ int SangaBoardHub::SyncPeripherals()
 			if (success && (strcmp(g_XYStageDeviceName, deviceName) == 0))
 			{
 				XYStage* xyStage = dynamic_cast<XYStage*>(GetDevice(deviceName));
-				xyStage->SyncState();
-				
+				xyStage->SyncState();	
 			}
 
 			// Sync z stage
@@ -444,7 +372,6 @@ int SangaBoardHub::SyncPeripherals()
 			{
 				ZStage* zStage = dynamic_cast<ZStage*>(GetDevice(deviceName));
 				zStage->SyncState();
-
 			}
 
 			// Sync illumination
@@ -452,16 +379,15 @@ int SangaBoardHub::SyncPeripherals()
 			{
 				LEDIllumination* light = dynamic_cast<LEDIllumination*>(GetDevice(deviceName));
 				light->SyncState();
-
 			}
-
 		}
 
 		return DEVICE_OK;
 }
 
-
-
+/**
+* Parse a sentence for numbers
+*/
 long SangaBoardHub::ExtractNumber(std::string str) {
 	std::stringstream ss(str);
 	std::string temp;
@@ -477,15 +403,10 @@ long SangaBoardHub::ExtractNumber(std::string str) {
 	return 0; // Return 0 if no long is found
 }
 
-
-
 ///////////////////////////////////////////////////////////////////////////////
-// OpenFlexure implementation
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// XYStage implementation
+///////////////////////////////////////////////////////////////////////////////
 
-/*
-* Constructor, called when device is selected
-*/
 XYStage::XYStage() : initialized_(false), portAvailable_(false), stepSizeUm_(0.07), stepsX_(0), stepsY_(0), pHub(NULL)
 {
 	// Parent ID display
@@ -493,34 +414,19 @@ XYStage::XYStage() : initialized_(false), portAvailable_(false), stepSizeUm_(0.0
 
 	// Initialize default error messages
 	InitializeDefaultErrorMessages();
-
-	//pre initialization property: port name
-	//CPropertyAction* pAct = new CPropertyAction(this, &OpenFlexure::OnPort);
-	//CreateProperty(MM::g_Keyword_Port, "Undefined", MM::String, false, pAct, true);
-
-
 }
 
-/*
-* Destructor
-*/
 XYStage::~XYStage()
 {
 	Shutdown();
 }
 
-
-/*
-* Initialize the properties and attach the action pointers where needed
-*/
 int XYStage::Initialize()
 {
-	if (initialized_) {
+	if (initialized_)
 		return DEVICE_OK;
-	}
 
-
-	// Create pointer to parent hub (sangaboard)
+	// Get hub instance
 	pHub = static_cast<SangaBoardHub*>(GetParentHub());
 	if (pHub)
 	{
@@ -530,10 +436,6 @@ int XYStage::Initialize()
 	}
 	else
 		LogMessage(NoHubError);
-
-	// Set port name
-	//pHub->GetPort(this->port_);
-
 
 	// Check status to see if device is ready to start
 	int status = UpdateStatus();
@@ -548,26 +450,138 @@ int XYStage::Initialize()
 		return DEVICE_ERR;
 	}
 
-	// Set the current stagePosition
+	// Set the current stage position
 	SyncState();
 
 	// Device is now initialized
 	initialized_ = true;
-	
 
 	return DEVICE_OK; 
 }
 
-/*
-* Shutdown the OpenFlexure
-*/
 int XYStage::Shutdown()
 {
+	//De-energize the motors
 	std::string cmd = "release";
 	pHub->SendCommand(cmd, _serial_answer);
 	initialized_ = false;
 	return DEVICE_OK;
 }
+
+int XYStage::SetPositionSteps(long x, long y)
+{
+	// Probably best to call SetRelativePosition() to complete this function
+	return DEVICE_OK;
+}
+
+int XYStage::SetPositionUm(double posX, double posY)
+{
+	// Manual changing position
+	return DEVICE_OK;
+}
+
+int XYStage::GetPositionUm(double& posX, double& posY)
+{
+	posX = stepsX_ * stepSizeUm_;
+	posY = stepsY_ * stepSizeUm_;
+
+	return DEVICE_OK;
+}
+
+/**
+* Should be called by GetPositionUm(), but probably redundant, because I'm keeping stepsX_ and stepsY_ global variables
+*/
+int XYStage::GetPositionSteps(long& x, long& y)
+{
+	x = stepsX_;
+	y = stepsY_;
+
+	return DEVICE_OK;
+}
+
+int XYStage::SetRelativePositionUm(double dx, double dy)
+{
+	long dxSteps = nint(dx / stepSizeUm_);
+	long dySteps = nint(dy / stepSizeUm_);
+	int ret = SetRelativePositionSteps(dxSteps, dySteps); // Stage starts moving after this step
+
+	if (ret == DEVICE_OK) {
+		stepsX_ += dxSteps;
+		stepsY_ += dySteps;
+		this->OnXYStagePositionChanged(stepsX_ * stepSizeUm_, stepsY_ * stepSizeUm_);
+	}
+
+	return DEVICE_OK;
+}
+
+int XYStage::SetRelativePositionSteps(long x, long y)
+{
+
+	// Sending two commands sequentially
+	std::ostringstream cmd;
+	cmd << "mrx " << x << "\nmry " << y; // move in x first then y (arbitrary choice)
+
+	int ret = pHub->SendCommand(cmd.str(), _serial_answer);
+
+	return ret;
+}
+
+int XYStage::SetOrigin()
+{
+
+	// Set current position as origin (all motor positions set to 0)
+	std::string cmd = "zero";
+	int ret = pHub->SendCommand(cmd, _serial_answer);
+
+	return ret;
+}
+
+int XYStage::SetAdapterOrigin()
+{
+	//Could be the function to sync adapter to the stage's actual positions...
+	return DEVICE_OK;
+}
+
+/**
+* Return the device to the origin 
+*/
+int XYStage::Home()
+{
+	//TODO: Query the position steps and set the number of steps to opposite that
+	return DEVICE_OK;
+}
+
+int XYStage::Stop()
+{
+	// send the stop command to the stage
+	std::string cmd = "stop";
+	pHub->SendCommand(cmd, _serial_answer);
+
+	// Make sure current position is synched
+	SyncState();
+
+	return DEVICE_OK;
+
+}
+
+int XYStage::GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax)
+{
+	return DEVICE_OK;
+}
+
+int XYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax)
+{
+	return DEVICE_OK;
+}
+
+void XYStage::GetName(char* name) const
+{
+	CDeviceUtils::CopyLimitedString(name, g_XYStageDeviceName);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+// XYStage Helper Functions
+///////////////////////////////////////////////////////////////////////////////
 
 /**
 * Sync the starting position of the stage to the cached values in the adapter
@@ -595,188 +609,28 @@ int XYStage::SyncState()
 	return DEVICE_OK;
 }
 
-
-
-/**
-* Called by SetPositionUm()
-* Probably best to call SetRelativePosition() to complete this function
-*/
-int XYStage::SetPositionSteps(long x, long y)
-{
-	return DEVICE_OK;
-}
-
-/**
-* 	Manually change the xPos and yPos
-*/
-int XYStage::SetPositionUm(double posX, double posY)
-{
-	// Not sure where this function is actually called...
-	return DEVICE_OK;
-}
-
-
-/**
-* Called when stage control GUI is opened
-*/
-int XYStage::GetPositionUm(double& posX, double& posY)
-{
-	posX = stepsX_ * stepSizeUm_;
-	posY = stepsY_ * stepSizeUm_;
-
-	return DEVICE_OK;
-}
-
-
-/**
-* Should be called by GetPositionUm(), but probably redundant, because I'm keeping stepsX_ and stepsY_ global variables
-*/
-int XYStage::GetPositionSteps(long& x, long& y)
-{
-	x = stepsX_;
-	y = stepsY_;
-
-	return DEVICE_OK;
-}
-
-/**
-* Rewriting a function that I shouldn't have messed with...
-* Called when arrow key is pressed
-* Calls on SetRelativePositionSteps to actuate change in physical device
-* Updates OnXYStagePositionChanged with xPos and yPos
-*/
-int XYStage::SetRelativePositionUm(double dx, double dy)
-{
-	long dxSteps = nint(dx / stepSizeUm_);
-	long dySteps = nint(dy / stepSizeUm_);
-	int ret = SetRelativePositionSteps(dxSteps, dySteps); // Stage starts moving after this step
-
-	if (ret == DEVICE_OK) {
-		stepsX_ += dxSteps;
-		stepsY_ += dySteps;
-		this->OnXYStagePositionChanged(stepsX_ * stepSizeUm_, stepsY_ * stepSizeUm_);
-	}
-
-	return DEVICE_OK;
-}
-
-/**
-* According to DeviceBase.h, it uses GetPositionSteps() and then SetPositionSteps()
-* Since OpenFlexure has a specific function for setting relative position, I'm actualizing the xy stage device here
-*/
-int XYStage::SetRelativePositionSteps(long x, long y)
-{
-
-	// Sending two commands sequentially
-	std::ostringstream cmd;
-	cmd << "mrx " << x << "\nmry " << y; // move in x first then y (arbitrary choice)
-
-	int ret = pHub->SendCommand(cmd.str(), _serial_answer);
-
-	return ret;
-}
-
-
-int XYStage::SetOrigin()
-{
-
-	// Set current position as origin (all motor positions set to 0)
-	std::string cmd = "zero";
-	int ret = pHub->SendCommand(cmd, _serial_answer);
-
-	return ret;
-}
-
-
-/**
-* Could be the function to sync adapter to the stage's actual positions...
-*/
-int XYStage::SetAdapterOrigin()
-{
-	return DEVICE_OK;
-}
-
-/**
-* Return the device to the origin 
-*/
-int XYStage::Home()
-{
-	//TODO: Query the position steps and set the number of steps to opposite that
-	return DEVICE_OK;
-}
-
-int XYStage::Stop()
-{
-	// send the stop command to the stage
-	std::string cmd = "stop";
-	pHub->SendCommand(cmd, _serial_answer);
-
-	// Make sure current position is synched
-	SyncState();
-
-	return DEVICE_OK;
-
-}
-
-
-
-int XYStage::GetStepLimits(long& xMin, long& xMax, long& yMin, long& yMax)
-{
-	return DEVICE_OK;
-}
-int XYStage::GetLimitsUm(double& xMin, double& xMax, double& yMin, double& yMax)
-{
-	return DEVICE_OK;
-}
-
-
-//////////// Helper Functions
-
-
-/*
-* Pass a copy of the device name to the location given in the parameters
-*/
-void XYStage::GetName(char* name) const
-{
-	CDeviceUtils::CopyLimitedString(name, g_XYStageDeviceName);
-}
-
-
 ///////////////////////////////////////////////////////////////////////////////
-// ZStage implementation
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+// ZsStage implementation
+///////////////////////////////////////////////////////////////////////////////
 
-/*
-* Constructor
-*/
 ZStage::ZStage() : initialized_(false), stepSizeUm_(0.05), stepsZ_(0), pHub(NULL)
 {
-
 	// Parent ID display
 	//CreateHubIDProperty();
 
 	// Initialize default error messages
 	InitializeDefaultErrorMessages();
-
 }
 
-/*
-* Destructor
-*/
 ZStage::~ZStage()
 {
 	Shutdown();
 }
 
-/*
-* Initialize the properties and attach the action pointers where needed
-*/
 int ZStage::Initialize()
 {
-	if (initialized_) {
+	if (initialized_) 
 		return DEVICE_OK;
-	}
-
 
 	// Create pointer to parent hub (sangaboard)
 	pHub = static_cast<SangaBoardHub*>(GetParentHub());
@@ -788,7 +642,6 @@ int ZStage::Initialize()
 	}
 	else
 		LogMessage(NoHubError);
-
 
 	// Check status to see if device is ready to start
 	int status = UpdateStatus();
@@ -809,69 +662,30 @@ int ZStage::Initialize()
 	// Device is now initialized
 	initialized_ = true;
 
-
 	return DEVICE_OK;
 }
 
-/**
-* Shutdown the device
-* De-energize the motor
-*/
 int ZStage::Shutdown()
 { 
+	// De-energize the motors
 	std::string cmd = "release";
 	pHub->SendCommand(cmd, _serial_answer);
 	initialized_ = false; 
 	return DEVICE_OK; 
 }
 
-/**
-* Sync the starting position of the stage to the cached values in the adapter
-*/
-int ZStage::SyncState()
-{
-	// Query for the current position [x y z] of the stage
-	std::string cmd = "p";
-	pHub->SendCommand(cmd, _serial_answer);
-
-	// Parse the position of the stage to just get the z position
-	std::istringstream iss(_serial_answer);
-
-	iss >> stepsZ_ >> stepsZ_ >> stepsZ_;
-
-	// Reflect the synch-ed state in display
-	int ret = OnStagePositionChanged(stepsZ_ * stepSizeUm_);
-
-	if (ret != DEVICE_OK) {
-		return ret;
-	}
-
-	return DEVICE_OK;
-}
-
-/**
-* Return position in microns
-*/
 int ZStage::GetPositionUm(double& pos)
 {
 	pos = stepsZ_ * stepSizeUm_;
 	return DEVICE_OK;
 }
 
-
-/**
-* Returns position in steps
-*/
 int ZStage::GetPositionSteps(long& steps)
 {
 	steps = stepsZ_;
 	return DEVICE_OK;
 }
 
-
-/**
-* Calls SetRelativeSteps to move the stage and updates the
-*/
 int ZStage::SetRelativePositionUm(double d)
 {
 	long dSteps = nint(d / stepSizeUm_);
@@ -885,13 +699,9 @@ int ZStage::SetRelativePositionUm(double d)
 	return DEVICE_OK;
 }
 
-/**
-* According to DeviceBase.h, it uses GetPositionSteps() and then SetPositionSteps()
-* Since OpenFlexure has a specific function for setting relative position, I'm actualizing the xy stage device here
-*/
+
 int ZStage::SetRelativePositionSteps(long z)
 {
-
 	// Concatenate the command and number of steps
 	std::ostringstream cmd;
 	cmd << "mrz " << z;
@@ -917,13 +727,38 @@ void ZStage::GetName(char* name) const
 	CDeviceUtils::CopyLimitedString(name, g_ZStageDeviceName);
 }
 
+///////////////////////////////////////////////////////////////////////////////
+// ZStage Helper functions
+///////////////////////////////////////////////////////////////////////////////
 
+/**
+* Sync the starting position of the stage to the cached values in the adapter
+*/
+int ZStage::SyncState()
+{
+	// Query for the current position [x y z] of the stage
+	std::string cmd = "p";
+	pHub->SendCommand(cmd, _serial_answer);
+
+	// Parse the position of the stage to just get the z position
+	std::istringstream iss(_serial_answer);
+
+	iss >> stepsZ_ >> stepsZ_ >> stepsZ_;
+
+	// Reflect the synch-ed state in display
+	int ret = OnStagePositionChanged(stepsZ_ * stepSizeUm_);
+
+	if (ret != DEVICE_OK) {
+		return ret;
+	}
+
+	return DEVICE_OK;
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // LED Illumination implementation
-// ~~~~~~~~~~~~~~~~~~~~~~~~~~~
+///////////////////////////////////////////////////////////////////////////////
 
-// Destructor
 LEDIllumination::~LEDIllumination()
 {
 	Shutdown();
@@ -947,11 +782,8 @@ int LEDIllumination::Initialize()
 	// Sync current device values to cached values
 	SyncState();
 
-	// set property list
-	// -----------------
-
-	changedTime_ = GetCurrentMMTime();
-
+	// Set property list
+	// ------------------
 	// state
 	CPropertyAction* pAct = new CPropertyAction(this, &LEDIllumination::OnState);
 	int ret = CreateIntegerProperty(MM::g_Keyword_State, state_, false, pAct);
@@ -961,13 +793,10 @@ int LEDIllumination::Initialize()
 	AddAllowedValue(MM::g_Keyword_State, "0"); // Closed
 	AddAllowedValue(MM::g_Keyword_State, "1"); // Open
 
-
 	// Brightness property is a slider
 	CPropertyAction* pActbr = new CPropertyAction(this, &LEDIllumination::OnBrightness);
 	CreateProperty(g_Keyword_Brightness, std::to_string(brightness_).c_str(), MM::Float, false, pActbr);
 	SetPropertyLimits(g_Keyword_Brightness, 0, 1.0);
-
-
 
 	ret = UpdateStatus();
 	if (ret != DEVICE_OK)
@@ -980,14 +809,12 @@ int LEDIllumination::Initialize()
 
 int LEDIllumination::Shutdown()
 { 
-	initialized_ = false; 
+	// Turn LED off
 	SetOpen(false);
+	initialized_ = false; 
 	return DEVICE_OK; 
 }
 
-/**
-* Turn the LED on via serial command
-*/
 int LEDIllumination::SetOpen(bool open)//bool open = true)
 {
 	state_ = open;
@@ -1004,30 +831,21 @@ int LEDIllumination::SetOpen(bool open)//bool open = true)
 	return DEVICE_OK;
 }
 
-/**
-* Let MM API know if the LED is on
-*/
 int LEDIllumination::GetOpen(bool& open)
 {
 	open = state_;
 	return DEVICE_OK;
 }
 
-/**
-* Get Name of shutter device
-*/
 void LEDIllumination::GetName(char* name) const
 {
 	CDeviceUtils::CopyLimitedString(name, g_ShutterDeviceName);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-// Action handlers
+// LED Illumination Action handlers
 ///////////////////////////////////////////////////////////////////////////////
 
-/**
-* Controls the shutter button 
-*/
 int LEDIllumination::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 {
 	if (eAct == MM::BeforeGet)
@@ -1053,9 +871,6 @@ int LEDIllumination::OnState(MM::PropertyBase* pProp, MM::ActionType eAct)
 	return DEVICE_OK;
 }
 
-/**
-* Controls the brightness property in hardware property browser
-*/
 int LEDIllumination::OnBrightness(MM::PropertyBase* pProp, MM::ActionType eAct) 
 {
 	if (eAct == MM::BeforeGet)
@@ -1071,15 +886,12 @@ int LEDIllumination::OnBrightness(MM::PropertyBase* pProp, MM::ActionType eAct)
 			// actually send command to set brightness of the LedArray
 			SetBrightness();
 		}
-
 	}
-
 	return DEVICE_OK;
 }
 
-
 ///////////////////////////////////////////////////////////////////////////////
-// Action Fucntions
+// LED Illumination Helper Functions
 ///////////////////////////////////////////////////////////////////////////////
 
 /**
@@ -1113,14 +925,14 @@ int LEDIllumination::SyncState()
 		}
 	}
 	else {
-		// Handle the error: the expected format is not found
 		return DEVICE_ERR;
 	}
-	//brightness_ = pHub->ExtractNumber(_serial_answer);
-
 	return DEVICE_OK;
 }
 
+/**
+* Turn LED on to a certain brightness-
+*/
 int LEDIllumination::SetBrightness()
 {
 	// actually send command to set brightness of the LedArray
