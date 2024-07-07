@@ -22,6 +22,7 @@
 //                CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT,
 //                INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES.
 
+#pragma once
 
 ///////////////////////////////////////////////////////////////////////////////
 // Header version
@@ -30,7 +31,6 @@
 #define DEVICE_INTERFACE_VERSION 71
 ///////////////////////////////////////////////////////////////////////////////
 
-
 // N.B.
 //
 // Never add parameters or return values that are not POD
@@ -38,11 +38,6 @@
 // derived classes defined in this file. For example, a std::string parameter
 // is not acceptable (use const char*). This is to prevent inter-DLL
 // incompatibilities.
-
-
-#pragma once
-#ifndef MMMMDEVICE_H
-#define MMMMDEVICE_H
 
 #include "MMDeviceConstants.h"
 #include "DeviceUtils.h"
@@ -58,7 +53,10 @@
 #include <vector>
 
 
-#ifdef MODULE_EXPORTS
+#ifdef MMDEVICE_CLIENT_BUILD
+// Hide deprecation warnings when building MMCore
+#   define MM_DEPRECATED(prototype) prototype
+#else
 #   ifdef _MSC_VER
 #      define MM_DEPRECATED(prototype) __declspec(deprecated) prototype
 #   elif defined(__GNUC__)
@@ -66,11 +64,10 @@
 #   else
 #      define MM_DEPRECATED(prototype) prototype
 #   endif
-#else
-#   define MM_DEPRECATED(prototype) prototype
 #endif
 
-#ifdef WIN32
+// To be removed once the deprecated Get/SetModuleHandle() is removed:
+#ifdef _WIN32
    #define WIN32_LEAN_AND_MEAN
    #include <windows.h>
 
@@ -283,13 +280,9 @@ namespace MM {
       virtual void SetDelayMs(double delay) = 0;
       virtual bool UsesDelay() = 0;
 
-      /**
-       * library handle management (for use only in the client code)
-       */
-      // TODO Get/SetModuleHandle() is no longer used; can remove at a
-      // convenient time.
-      virtual HDEVMODULE GetModuleHandle() const = 0;
-      virtual void SetModuleHandle(HDEVMODULE hLibraryHandle) = 0;
+      MM_DEPRECATED(virtual HDEVMODULE GetModuleHandle() const) = 0;
+      MM_DEPRECATED(virtual void SetModuleHandle(HDEVMODULE hLibraryHandle)) = 0;
+
       virtual void SetLabel(const char* label) = 0;
       virtual void GetLabel(char* name) const = 0;
       virtual void SetModuleName(const char* moduleName) = 0;
@@ -971,7 +964,11 @@ namespace MM {
 
 
    /**
-    * SLM API
+    * Spatial Ligh Modulator (SLM) API.  An SLM is a device that can display images.
+    * It is expected to represent a rectangular grid (i.e. it has width and height) 
+    * of pixels that can be either 8 bit or 32 bit.  Illumination (light source on 
+    * or off) is logically independent of displaying the image.  Likely the most 
+    * widely used implmentation is the GenericSLM.
     */
    class SLM : public Device
    {
@@ -1120,6 +1117,17 @@ namespace MM {
 
    /**
     * Galvo API
+    * A Galvo in Micro-Manager is a two-axis (conveniently labeled x and y) that can illuminate
+    * a sample in the microscope.  It therefore also has the capability to switch a light source 
+    * on and off (note that this functionality can be offloaded to a shutter device 
+    * that can be obtained through a callback).  Galvos can illuminate a point, or 
+    * possibly be directed to illuminate a polygon by scanning the two axis and controlling
+    * the light source so that only the area with the polygon is illuminated.
+    * Currently known implementations are Utilities-DAGalvo (which uses two DAs to 
+    * control a Galvo), Democamera-Galvo, ASITiger-ASIScanner, and Rapp.
+    * There is no integration with a detector as would be needed for a confocal microscope,
+    * and there is also no support for waveforms.
+    * 
     */
    class Galvo : public Device
    {
@@ -1135,15 +1143,40 @@ namespace MM {
       /**
        * Moves the galvo devices to the requested position, activates the light
        * source, waits for the specified amount of time (in microseconds), and
-       * deactivates the light source
+       * deactivates the light source.
+       * @return errorcode (DEVICE_OK if no error)
        */
       virtual int PointAndFire(double x, double y, double time_us) = 0;
+      /**
+       * This function seems to be misnamed.  Its name suggest that it is the 
+       * interval between illuminating two consecutive spots, but in practice it 
+       * is used to set the time a single spot is illuminated (and the time 
+       * to move between two spots is usually extremely short).
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int SetSpotInterval(double pulseInterval_us) = 0;
+      /**
+       * Sets the position of the two axes of the Galvo device in native 
+       * unit (usually through a voltage that controls the galvo posiution).
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int SetPosition(double x, double y) = 0;
+      /**
+       * Returns the current position of the two axes (usually the last position 
+       * that was set, although this may be different for Galvo devices that also
+       * can be controlled through another source). 
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int GetPosition(double& x, double& y) = 0;
+      /**
+       * Switches the light source under control of this device on or off.  If light control
+       * through a Shutter device is desired, a property should be added that can be set 
+       * to the name of the lightsource. 
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int SetIlluminationState(bool on) = 0;
       /**
-       * X range of the device in native units
+       * X range of the device in native units.
        */
       virtual double GetXRange() = 0;
       /**
@@ -1152,21 +1185,69 @@ namespace MM {
        */
       virtual double GetXMinimum() = 0;
       /**
-       * Y range of the device in native units
+       * Y range of the device in native units.
        */
       virtual double GetYRange() = 0;
       /**
-       * Minimum Y value for the device in native units
-       * Must be implemented if it is not 0.0
+       * Minimum Y value for the device in native units.
+       * Must be implemented if it is not 0.0.
        */
       virtual double GetYMinimum() = 0;
+      /**
+       * A galvo device in principle can draw arbitrary polygons.  Polygons are 
+       * added added here point by point.  There is nothing in the API that prevents
+       * adding polygons in random order, but most implementations so far
+       * do not deal with that well (i.e. expect polygons to be added in incremental
+       * order).  Vertex points are added in order and can not be modified through the API
+       * after adding (only way is to delete all polygons and start anew).
+       * 
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int AddPolygonVertex(int polygonIndex, double x, double y) = 0;
+      /**
+       * Deletes all polygons previously stored in the device adapater.
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int DeletePolygons() = 0;
+      /**
+       * Presumably the idea of this function is to have the Galvo draw the 
+       * each polygon in the pre-loaded sequence after its controller receives
+       * a TTL trigger.  This is not likely to be supported by all Galvo devices.
+       * There currently is no API method to query whether Sequences are supported.
+       * When the number of TTLs exceeds the number of polygons, the desired behavior
+       * is to repeat the sequence from the beginning.
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int RunSequence() = 0;
+      /**
+       * Transfers the polygons from the device adapter memory to the Galvo controller.
+       * Should be called before RunPolygons() or RunSequence(). This is mainly an 
+       * optimization so that the device adapter does not need to transfer each vertex
+       * individually.  Some Galvo device adapters will do nothing in this function.
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int LoadPolygons() = 0;
+      /**
+       * Sets the number of times the polygons should be displayed in the RunPolygons
+       * function.
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int SetPolygonRepetitions(int repetitions) = 0;
+      /**
+       * Displays each pre-loaded polygon in sequence, each illuminated for pulseinterval_us
+       * micro-seconds.
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int RunPolygons() = 0;
+      /**
+       * Stops the TTL triggered transitions of drawing polygons started in RunSequence().
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int StopSequence() = 0;
+      /**
+       * It is completely unclear what this function is supposed to do.  Deprecate?.
+       * @return errorcode (DEVICE_OK if no error)
+       */
       virtual int GetChannel(char* channelName) = 0;
    };
 
@@ -1235,7 +1316,17 @@ namespace MM {
       Core() {}
       virtual ~Core() {}
 
+      /**
+       * Logs a message (msg) in the Corelog output, labeled with the device name (derived 
+       * from caller).  If debugOnly flag is true, the output will only be logged if the 
+       * general system has been set to output debug logging.
+       */
       virtual int LogMessage(const Device* caller, const char* msg, bool debugOnly) const = 0;
+      /**
+       * Callback that allows this device adapter to get a pointer to another device.  Be aware of
+       * potential threading issues. Provide a valid label for the device and receive a pointer 
+       * to the desired device.
+       */
       virtual Device* GetDevice(const Device* caller, const char* label) = 0;
       virtual int GetDeviceProperty(const char* deviceName, const char* propName, char* value) = 0;
       virtual int SetDeviceProperty(const char* deviceName, const char* propName, const char* value) = 0;
@@ -1317,44 +1408,32 @@ namespace MM {
       /// \deprecated Use the other forms instead.
       virtual int InsertMultiChannel(const Device* caller, const unsigned char* buf, unsigned numChannels, unsigned width, unsigned height, unsigned byteDepth, Metadata* md = 0) = 0;
 
-      // autofocus
-      // TODO This interface needs improvement: the caller pointer should be
-      // passed, and it should be clarified whether the use of these methods is
-      // to be limited to autofocus or not. - Mark T.
-      virtual const char* GetImage() = 0;
-      virtual int GetImageDimensions(int& width, int& height, int& depth) = 0;
-      virtual int GetFocusPosition(double& pos) = 0;
-      virtual int SetFocusPosition(double pos) = 0;
-      virtual int MoveFocus(double velocity) = 0;
-      virtual int SetXYPosition(double x, double y) = 0;
-      virtual int GetXYPosition(double& x, double& y) = 0;
-      virtual int MoveXYStage(double vX, double vY) = 0;
-      virtual int SetExposure(double expMs) = 0;
-      virtual int GetExposure(double& expMs) = 0;
-      virtual int SetConfig(const char* group, const char* name) = 0;
-      virtual int GetCurrentConfig(const char* group, int bufLen, char* name) = 0;
-      virtual int GetChannelConfig(char* channelConfigName, const unsigned int channelConfigIterator) = 0;
+      // Formerly intended for use by autofocus
+      MM_DEPRECATED(virtual const char* GetImage()) = 0;
+      MM_DEPRECATED(virtual int GetImageDimensions(int& width, int& height, int& depth)) = 0;
+      MM_DEPRECATED(virtual int GetFocusPosition(double& pos)) = 0;
+      MM_DEPRECATED(virtual int SetFocusPosition(double pos)) = 0;
+      MM_DEPRECATED(virtual int MoveFocus(double velocity)) = 0;
+      MM_DEPRECATED(virtual int SetXYPosition(double x, double y)) = 0;
+      MM_DEPRECATED(virtual int GetXYPosition(double& x, double& y)) = 0;
+      MM_DEPRECATED(virtual int MoveXYStage(double vX, double vY)) = 0;
+      MM_DEPRECATED(virtual int SetExposure(double expMs)) = 0;
+      MM_DEPRECATED(virtual int GetExposure(double& expMs)) = 0;
+      MM_DEPRECATED(virtual int SetConfig(const char* group, const char* name)) = 0;
+      MM_DEPRECATED(virtual int GetCurrentConfig(const char* group, int bufLen, char* name)) = 0;
+      MM_DEPRECATED(virtual int GetChannelConfig(char* channelConfigName, const unsigned int channelConfigIterator)) = 0;
 
-      // direct access to specific device types
-      // TODO With the exception of GetParentHub(), these should be removed in
-      // favor of methods providing indirect access to the required
-      // functionality. Eventually we should completely avoid access to raw
-      // pointers to devices of other device adapters (because we loose
-      // information on errors, because direct access ignores any
-      // synchronization implemented in the Core, and because it would be bad
-      // if device adapters stored the returned pointer). - Mark T.
-      virtual MM::ImageProcessor* GetImageProcessor(const MM::Device* caller) = 0; // Use not recommended
-      virtual MM::AutoFocus* GetAutoFocus(const MM::Device* caller) = 0; // Use not recommended
+      // Direct (and dangerous) access to specific device types
+      MM_DEPRECATED(virtual MM::ImageProcessor* GetImageProcessor(const MM::Device* caller)) = 0;
+      MM_DEPRECATED(virtual MM::AutoFocus* GetAutoFocus(const MM::Device* caller)) = 0;
 
       virtual MM::Hub* GetParentHub(const MM::Device* caller) const = 0;
 
-      virtual MM::State* GetStateDevice(const MM::Device* caller, const char* deviceName) = 0; // Use not recommended
-      virtual MM::SignalIO* GetSignalIODevice(const MM::Device* caller, const char* deviceName) = 0; // Use not recommended
+      // More direct (and dangerous) access to specific device types
+      MM_DEPRECATED(virtual MM::State* GetStateDevice(const MM::Device* caller, const char* deviceName)) = 0;
+      MM_DEPRECATED(virtual MM::SignalIO* GetSignalIODevice(const MM::Device* caller, const char* deviceName)) = 0;
 
-      // asynchronous error handling
-      // TODO We do need a framework for handling asynchronous errors, but this
-      // interface is poorly thought through. I'm working on a better design.
-      // - Mark T.
+      // Asynchronous error handling (never implemented)
       /// \deprecated Not sure what this was meant to do.
       MM_DEPRECATED(virtual void NextPostedError(int& /*errorCode*/, char* /*pMessage*/, int /*maxlen*/, int& /*messageLength*/)) = 0;
       /// \deprecated Better handling of asynchronous errors to be developed.
@@ -1364,6 +1443,3 @@ namespace MM {
    };
 
 } // namespace MM
-
-#endif //MMMMDEVICE_H
-

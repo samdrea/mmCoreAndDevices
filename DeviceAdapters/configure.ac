@@ -306,6 +306,15 @@ else
    AC_MSG_RESULT([not found])
 fi
 
+# Aravis (v0.10).
+AC_MSG_CHECKING(for Aravis_Linux)
+AM_CONDITIONAL([BUILD_ARAVIS_LINUX],[test -f "/usr/local/include/aravis-0.10/arv.h"])
+if test -f "/usr/local/include/aravis-0.10/arv.h"; then
+   AC_MSG_RESULT([found])
+else 
+   AC_MSG_RESULT([not found])
+fi
+
 # BaslerPylon
 AC_MSG_CHECKING(for Basler_Linux)
 AM_CONDITIONAL([BUILD_BASLER_LINUX],[test -f "/opt/pylon/include/pylon/PylonIncludes.h"])
@@ -393,6 +402,17 @@ AS_IF([test "x$want_opencv" != xno],
 
 
 AM_CONDITIONAL([BUILD_OPENCV], [test "x$use_opencv" = xyes])
+
+
+# Spinnaker SDK (FLIR).
+AC_MSG_CHECKING(for Spinnaker)
+AM_CONDITIONAL([BUILD_SPINNAKER],[test -f "/opt/spinnaker/include/Spinnaker.h"])
+if test -f "/opt/spinnaker/include/Spinnaker.h"; then
+   AC_MSG_RESULT([found])
+else
+   AC_MSG_RESULT([not found])
+fi
+
 
 # Vimba X (Allied Vision) SDK
 MM_ARG_WITH_OPTIONAL_LIB([Vimba X], [vimba-x], [VIMBA_X])
@@ -527,6 +547,7 @@ m4_define([device_adapter_dirs], [m4_strip([
    AndorLaserCombiner
    AndorSDK3
    Aquinas
+   Aravis
    Arduino
    Arduino32bitBoards
    Basler
@@ -586,6 +607,7 @@ m4_define([device_adapter_dirs], [m4_strip([
    NewportSMC
    Nikon
    NikonTE2000
+   NotificationTester
    OVP_ECS2
    Omicron
    OpenCVgrabber
@@ -618,6 +640,7 @@ m4_define([device_adapter_dirs], [m4_strip([
    SmarActHCU-3D
    SouthPort
    SpectralLMM5
+   Spinnaker
    Spot
    StarlightXpress
    SutterLambda

@@ -36,6 +36,7 @@
 #include <chrono>
 #include <string>
 #include <vector>
+#include <algorithm>
 
 
 CoreCallback::CoreCallback(CMMCore* c) :
@@ -222,7 +223,7 @@ CoreCallback::AddCameraMetadata(const MM::Device* caller, const Metadata* pMd)
             core_->deviceManager_->GetDevice(caller));
 
    std::string label = camera->GetLabel();
-   newMD.put("Camera", label);
+   newMD.put(MM::g_Keyword_Metadata_CameraLabel, label);
 
    std::string serializedMD;
    try
@@ -1031,11 +1032,7 @@ void CoreCallback::NextPostedError(int& errorCode, char* pMessage, int maxlen, i
          if( 0 < maxlen )
          {
             *pMessage = 0;
-#ifdef _WINDOWS
-            messageLength = min( maxlen, (int) nextError.second.length());
-#else
             messageLength = std::min( maxlen, (int) nextError.second.length());
-#endif
             strncpy(pMessage, nextError.second.c_str(), messageLength);
          }
       }

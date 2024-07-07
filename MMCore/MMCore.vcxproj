@@ -50,12 +50,11 @@
     </Midl>
     <ClCompile>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>WIN32;_DEBUG;_LIB;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MMDEVICE_CLIENT_BUILD;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <DisableSpecificWarnings>4290;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Lib>
       <OutputFile>$(OutDir)MMCore.lib</OutputFile>
@@ -66,11 +65,10 @@
       <TargetEnvironment>X64</TargetEnvironment>
     </Midl>
     <ClCompile>
-      <PreprocessorDefinitions>WIN32;NDEBUG;_LIB;_WINDOWS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>MMDEVICE_CLIENT_BUILD;NOMINMAX;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <RuntimeTypeInfo>true</RuntimeTypeInfo>
       <PrecompiledHeader>
       </PrecompiledHeader>
-      <DisableSpecificWarnings>4290;%(DisableSpecificWarnings)</DisableSpecificWarnings>
     </ClCompile>
     <Lib>
       <OutputFile>$(OutDir)MMCore.lib</OutputFile>
@@ -80,6 +78,7 @@
     <ClCompile Include="CircularBuffer.cpp" />
     <ClCompile Include="Configuration.cpp" />
     <ClCompile Include="CoreCallback.cpp" />
+    <ClCompile Include="CoreFeatures.cpp" />
     <ClCompile Include="CoreProperty.cpp" />
     <ClCompile Include="DeviceManager.cpp" />
     <ClCompile Include="Devices\AutoFocusInstance.cpp" />
@@ -118,6 +117,7 @@
     <ClInclude Include="ConfigGroup.h" />
     <ClInclude Include="Configuration.h" />
     <ClInclude Include="CoreCallback.h" />
+    <ClInclude Include="CoreFeatures.h" />
     <ClInclude Include="CoreProperty.h" />
     <ClInclude Include="CoreUtils.h" />
     <ClInclude Include="DeviceManager.h" />

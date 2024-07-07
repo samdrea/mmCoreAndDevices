@@ -36,6 +36,14 @@
 #include <memory>
 #include <string>
 
+#ifdef _MSC_VER
+#pragma warning(disable: 4290) // 'C++ exception specification ignored'
+#endif
+
+#if defined(__GNUC__) && !defined(__clang__)
+// 'dynamic exception specifications are deprecated in C++11 [-Wdeprecated]'
+#pragma GCC diagnostic ignored "-Wdeprecated"
+#endif
 
 const long long bytesInMB = 1 << 20;
 const long adjustThreshold = LONG_MAX / 2;
@@ -248,7 +256,7 @@ bool CircularBuffer::InsertMultiChannel(const unsigned char* pixArray, unsigned 
              md = *pMd;
           }
 
-         std::string cameraName = md.GetSingleTag("Camera").GetValue();
+         std::string cameraName = md.GetSingleTag(MM::g_Keyword_Metadata_CameraLabel).GetValue();
          if (imageNumbers_.end() == imageNumbers_.find(cameraName))
          {
             imageNumbers_[cameraName] = 0;

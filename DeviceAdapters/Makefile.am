@@ -13,6 +13,9 @@ endif
 if BUILD_ANDORSDK3
    ANDORSDK3 = AndorSDK3
 endif
+if BUILD_ARAVIS_LINUX
+   ARAVIS = Aravis
+endif
 if BUILD_BASLER_LINUX
    BASLER = Basler
 endif
@@ -59,6 +62,9 @@ endif
 if BUILD_SIMPLECAM
    SIMPLECAM = SimpleCam
 endif
+if BUILD_SPINNAKER
+   SPINNAKER = Spinnaker
+endif
 if BUILD_SPOT
    SPOT = Spot
 endif
@@ -78,6 +84,7 @@ SUBDIRS = \
 	$(ANDOR) \
 	$(ANDORLASERCOMBINER) \
 	$(ANDORSDK3) \
+        $(ARAVIS) \
 	$(BASLER) \
 	$(DC1394) \
 	$(FAKECAMERA) \
@@ -94,6 +101,7 @@ SUBDIRS = \
 	$(SENSICAM) \
 	$(SEQUENCE_TESTER) \
 	$(SIMPLECAM) \
+        $(SPINNAKER) \
 	$(SPOT) \
 	$(USBMANAGER) \
 	$(V4L) \
@@ -155,6 +163,7 @@ SUBDIRS = \
 	NewportSMC \
 	Nikon \
 	NikonTE2000 \
+	NotificationTester \
 	OVP_ECS2 \
 	Omicron \
 	Oxxius \
